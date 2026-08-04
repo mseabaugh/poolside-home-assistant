@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
+
+WORKDIR /work
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY playwright.config.ts ./
+COPY tests/e2e/browser tests/e2e/browser
+RUN chown -R pwuser:pwuser /work
+
+USER pwuser
+CMD ["npx", "playwright", "test"]

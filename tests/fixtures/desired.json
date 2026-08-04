@@ -1,0 +1,43 @@
+{
+  "DesiredStates": [
+    {
+      "ControlUUID": "light-one",
+      "Status": "ON",
+      "Brightness": 65,
+      "LightName": "Blue",
+      "Color": "Blue",
+      "Restricted": false,
+      "DisabledReasons": []
+    },
+    {
+      "ControlUUID": "light-combined",
+      "Status": "OFF",
+      "Brightness": 100,
+      "LightName": "Blue",
+      "InconsistentCombinedControl": true,
+      "Restricted": false,
+      "DisabledReasons": []
+    },
+    {
+      "ControlUUID": "filter-one",
+      "Status": "ON",
+      "PowerLevel": 75,
+      "Restricted": false,
+      "DisabledReasons": []
+    },
+    {
+      "ControlUUID": "heat-one",
+      "Status": "ON",
+      "SetPoint": 82,
+      "Restricted": false,
+      "DisabledReasons": []
+    },
+    {
+      "ControlUUID": "jets-restricted",
+      "Status": "OFF",
+      "Restricted": true,
+      "DisabledReasons": ["synthetic-reason"]
+    },
+    {"Status": "OFF"}
+  ]
+}

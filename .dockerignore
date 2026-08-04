@@ -1,0 +1,14 @@
+.coverage*
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+htmlcov
+node_modules
+playwright-report
+test-results
+*.egg-info
+**/__pycache__
+**/*.pyc

@@ -1,0 +1,84 @@
+{
+  "Sites": [
+    {
+      "UUID": "site-alpha",
+      "Name": "Synthetic Pool",
+      "TimeZone": "America/Chicago",
+      "Controls": [
+        {
+          "UUID": "light-one",
+          "Name": "Pool Light",
+          "Type": "Light",
+          "AvailableColors": ["Blue", {"Name": "Green"}],
+          "AvailableShows": ["America"]
+        },
+        {
+          "UUID": "filter-one",
+          "Name": "Filter",
+          "Type": "Filter",
+          "PowerLevelIncrements": [0, 25, 50, 75, 100]
+        },
+        {
+          "UUID": "heat-one",
+          "Name": "Pool Heat",
+          "Type": "HeatingControl"
+        },
+        {
+          "UUID": "jets-restricted",
+          "Name": "Spa Jets",
+          "Type": "Jets"
+        }
+      ],
+      "CombinedControls": [
+        {
+          "UUID": "light-combined",
+          "Name": "All Lights",
+          "Type": "Combined Light",
+          "AvailableColors": ["Blue"]
+        }
+      ],
+      "Themes": [
+        {"UUID": "theme-party-one", "Name": "Party", "isWorking": true},
+        {"UUID": "theme-party-two", "Name": "Party", "isWorking": false},
+        {"UUID": "theme-calm", "Name": "Calm", "isWorking": false}
+      ],
+      "EquipmentItems": [
+        {"UUID": "pump-one", "Name": "Main Pump", "Type": "Pump"},
+        {"UUID": "controller-one", "Name": "Controller", "Type": "Controller"}
+      ],
+      "Schedule": {
+        "Schedule": [
+          {
+            "ItemUUID": "filter-one",
+            "ItemType": "CONTROL",
+            "ScheduleElements": [
+              {
+                "Day": "Monday",
+                "Times": [
+                  {
+                    "UUID": "synthetic-event-one",
+                    "Status": "On",
+                    "StartMethod": "EXACT",
+                    "StartTime": "08:00",
+                    "EndMethod": "EXACT",
+                    "EndTime": "10:30"
+                  },
+                  {
+                    "UUID": "synthetic-event-overnight",
+                    "Status": "On",
+                    "StartMethod": "EXACT",
+                    "StartTime": "23:30",
+                    "EndMethod": "EXACT",
+                    "EndTime": "01:00"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "FutureField": {"preserved": true}
+      },
+      "FutureSiteField": {"preserved": true}
+    }
+  ]
+}

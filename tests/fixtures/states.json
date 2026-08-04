@@ -1,0 +1,9 @@
+{
+  "states": [
+    {"entityUuid": "pump-one", "item": "RPM", "state": "1800"},
+    {"entityUuid": "pump-one", "item": "Online", "state": "true"},
+    {"entityUuid": "pump-one", "item": "Version", "state": "004"},
+    {"entityUuid": "controller-one", "Online": false, "Firmware": "1.2.3"},
+    {"item": "Ignored", "state": "1"}
+  ]
+}

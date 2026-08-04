@@ -1,0 +1,46 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This Poolside account is already configured.",
+      "reauth_successful": "Reauthentication was successful."
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to Poolside.",
+      "invalid_auth": "The access token was rejected.",
+      "unknown": "An unexpected error occurred."
+    },
+    "step": {
+      "reauth_confirm": {
+        "data": {
+          "access_token": "Access token"
+        },
+        "description": "Enter a replacement Poolside bearer access token.",
+        "title": "Reauthenticate Poolside"
+      },
+      "user": {
+        "data": {
+          "access_token": "Access token"
+        },
+        "description": "Enter a Poolside bearer access token. Username/password login is not yet supported because that protocol has not been confirmed.",
+        "title": "Connect to Poolside"
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "theme": {
+        "name": "Activate"
+      }
+    },
+    "calendar": {
+      "schedule": {
+        "name": "Schedule"
+      }
+    },
+    "select": {
+      "theme": {
+        "name": "Theme"
+      }
+    }
+  }
+}

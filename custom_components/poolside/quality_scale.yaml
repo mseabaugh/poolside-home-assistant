@@ -1,0 +1,12 @@
+rules:
+  config_flow: done
+  config_flow_test_coverage: done
+  dependency_transparency: done
+  docs_actions: done
+  docs_high_level_description: done
+  docs_installation_instructions: done
+  entity_unique_id: done
+  has_entity_name: done
+  runtime_data: done
+  test_before_configure: done
+  unique_config_entry: done

@@ -1,0 +1,17 @@
+local.file_match "home_assistant" {
+  path_targets = [{
+    "__path__" = "/var/lib/homeassistant/home-assistant.log",
+    "job"      = "home-assistant",
+  }]
+}
+
+loki.source.file "home_assistant" {
+  targets    = local.file_match.home_assistant.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

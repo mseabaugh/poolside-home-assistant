@@ -1,0 +1,19 @@
+default_config:
+
+homeassistant:
+  name: Poolside E2E
+  time_zone: America/Chicago
+
+http:
+  server_host: 0.0.0.0
+
+logger:
+  default: info
+  logs:
+    custom_components.poolside: debug
+
+lovelace:
+  mode: yaml
+
+recorder:
+  db_url: sqlite:////config/poolside-e2e.db

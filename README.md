@@ -1,0 +1,58 @@
+# Poolside for Home Assistant
+
+Poolside is an unofficial, safety-first custom integration for Poolside Tech's The Attendant.
+It runs inside a local Home Assistant installation and currently communicates with the
+Poolside cloud. No direct controller LAN protocol has been verified.
+
+> [!WARNING]
+> This project is not affiliated with or supported by Poolside Tech. Pool equipment can cause
+> injury or property damage. This integration never writes directly to pumps, valves, heaters,
+> chemical equipment, probes, relays, or controller internals.
+
+## Current release scope
+
+- UI configuration using a user-supplied Poolside access token.
+- Dynamic discovery of sites, Controls, Combined Controls, Themes, schedules, and equipment.
+- Cloud-push updates with periodic reconciliation.
+- Read-only equipment telemetry and schedule calendar entities.
+- Safe light, binary Control, percentage Control, and Theme activation operations.
+- Diagnostics with recursive credential and personal-information redaction.
+- Reauthentication, reconnect handling, and explicit unavailable states.
+
+Schedule mutation, heating writes, Theme deactivation, and direct LAN control remain disabled
+until their exact protocols and concurrency behavior are confirmed.
+
+## Install locally
+
+1. Copy `custom_components/poolside` into Home Assistant's `config/custom_components` folder.
+2. Restart Home Assistant.
+3. Open **Settings → Devices & services → Add integration → Poolside**.
+4. Enter a valid Poolside bearer access token.
+
+The token is stored in the Home Assistant config entry and is never included in diagnostics or
+logs. The project does not currently implement username/password login because that protocol was
+not present in the source captures.
+
+## Developer workflow
+
+```bash
+make bootstrap
+make check
+make e2e
+make test
+make dev-up
+```
+
+`make dev-up` starts an isolated Home Assistant instance and a synthetic Poolside service. It
+also starts Loki, Alloy, and Grafana. It never uses production credentials or production
+Poolside endpoints. Home Assistant is available at `http://localhost:8123` and the provisioned
+Grafana dashboard at `http://localhost:3300`.
+
+See [Architecture](docs/ARCHITECTURE.md), [Testing](docs/TESTING.md),
+[Operations](docs/OPERATIONS.md), [Security](SECURITY.md), and
+[Contributing](CONTRIBUTING.md).
+
+## Project status
+
+This repository is alpha software. Read-only discovery and synthetic-service behavior are safe
+to develop and test. Enable real write behavior only on equipment you own and supervise.

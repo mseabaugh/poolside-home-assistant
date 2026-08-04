@@ -1,0 +1,15 @@
+FROM python:3.14.6-slim
+
+ARG APP_UID=10001
+RUN groupadd --gid ${APP_UID} app \
+    && useradd --no-log-init --uid ${APP_UID} --gid ${APP_UID} --create-home app \
+    && python -m pip install --no-cache-dir aiohttp==3.14.1
+
+WORKDIR /app
+COPY --chown=app:app tests/__init__.py tests/__init__.py
+COPY --chown=app:app tests/e2e tests/e2e
+COPY --chown=app:app tests/fixtures tests/fixtures
+
+USER app
+EXPOSE 8080
+CMD ["python", "-m", "tests.e2e.fake_poolside"]

@@ -1,0 +1,48 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [{"expr": "sum(rate({job=\"home-assistant\"} |= \"poolside_rpc\" [5m]))", "refId": "A"}],
+      "title": "Poolside RPC rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "targets": [{"expr": "sum by (outcome) (count_over_time({job=\"home-assistant\"} | regexp \"outcome=(?P<outcome>[^ ]+)\" [5m]))", "refId": "A"}],
+      "title": "Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "targets": [{"expr": "avg_over_time({job=\"home-assistant\"} | regexp \"duration_ms=(?P<duration_ms>[0-9]+)\" | unwrap duration_ms [5m])", "refId": "A"}],
+      "title": "Average RPC latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "Loki"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 8},
+      "id": 4,
+      "options": {"showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"expr": "{job=\"home-assistant\"} |= \"custom_components.poolside\"", "refId": "A"}],
+      "title": "Safe integration logs and correlation IDs",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 42,
+  "tags": ["poolside", "home-assistant"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "title": "Poolside Home Assistant",
+  "uid": "poolside-ha",
+  "version": 1
+}

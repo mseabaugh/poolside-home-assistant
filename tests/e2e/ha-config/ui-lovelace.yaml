@@ -1,0 +1,11 @@
+title: Poolside E2E
+views:
+  - title: Poolside
+    path: "0"
+    cards:
+      - type: entities
+        title: Synthetic Pool
+        entities:
+          - entity: switch.synthetic_pool_filter
+          - entity: light.synthetic_pool_pool_light
+          - entity: number.synthetic_pool_filter_power_level

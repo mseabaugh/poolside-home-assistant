@@ -1,0 +1,120 @@
+name: poolside-ha
+
+services:
+  fake-poolside:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fake-poolside
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [poolside-test]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.7.2
+    depends_on:
+      fake-poolside:
+        condition: service_healthy
+    environment:
+      POOLSIDE_API_URL: http://fake-poolside:8080/api/jsonrpc/v1
+      POOLSIDE_TEST_MODE: "1"
+      POOLSIDE_WS_URL: ws://fake-poolside:8080/websocket
+      TZ: America/Chicago
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8123/', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    networks: [poolside-test]
+    ports:
+      - "127.0.0.1:${HA_PORT:-8123}:8123"
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ha-test-config:/config
+      - ./custom_components/poolside:/config/custom_components/poolside:ro
+      - ./tests/e2e/ha-config/configuration.yaml:/config/configuration.yaml:ro
+      - ./tests/e2e/ha-config/ui-lovelace.yaml:/config/ui-lovelace.yaml:ro
+
+  e2e:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.e2e
+    depends_on:
+      home-assistant:
+        condition: service_healthy
+    environment:
+      FAKE_POOLSIDE_URL: http://fake-poolside:8080
+      HA_URL: http://home-assistant:8123
+    networks: [poolside-test]
+    profiles: [e2e]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./test-results:/work/test-results
+
+  loki:
+    image: grafana/loki:3.7.2
+    command: -config.file=/etc/loki/local-config.yaml
+    networks: [poolside-test]
+    profiles: [observability]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - loki-test-data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.18.0
+    command: run /etc/alloy/config.alloy --storage.path=/var/lib/alloy/data
+    depends_on: [loki]
+    networks: [poolside-test]
+    profiles: [observability]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/var/lib/alloy/data]
+    volumes:
+      - ha-test-config:/var/lib/homeassistant:ro
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    depends_on: [loki]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_SECURITY_ADMIN_PASSWORD: local-test-only
+    networks: [poolside-test]
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3300}:3000"
+    profiles: [observability]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - grafana-test-data:/var/lib/grafana
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+networks:
+  poolside-test:
+    driver: bridge
+
+volumes:
+  grafana-test-data:
+  ha-test-config:
+  loki-test-data:
