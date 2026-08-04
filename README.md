@@ -24,10 +24,14 @@ until their exact protocols and concurrency behavior are confirmed.
 
 ## Install locally
 
-1. Copy `custom_components/poolside` into Home Assistant's `config/custom_components` folder.
-2. Restart Home Assistant.
-3. Open **Settings → Devices & services → Add integration → Poolside**.
-4. Enter a valid Poolside bearer access token.
+1. Run `make package` and locate `dist/poolside-<version>.zip`, or download the
+   `poolside-home-assistant` artifact from a successful CI build.
+2. Extract the ZIP into Home Assistant's `config/custom_components` folder. The resulting path
+   must be `config/custom_components/poolside/manifest.json`.
+3. Optionally verify the ZIP against the adjacent `.sha256` file.
+4. Restart Home Assistant.
+5. Open **Settings → Devices & services → Add integration → Poolside**.
+6. Enter a valid Poolside bearer access token.
 
 The token is stored in the Home Assistant config entry and is never included in diagnostics or
 logs. The project does not currently implement username/password login because that protocol was
@@ -39,6 +43,7 @@ not present in the source captures.
 make bootstrap
 make check
 make e2e
+make package
 make test
 make dev-up
 ```

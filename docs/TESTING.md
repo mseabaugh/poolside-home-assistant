@@ -19,6 +19,7 @@ documents, failed confirmations, and recursive secret redaction.
 
 Run `make check` for formatting, lint, strict types, Compose validation, and the Python coverage
 gate. Run `make e2e` for the disposable browser stack. `make build` requires both and then builds
-the local images. The browser scenario performs fresh HA onboarding, adds the integration in the
+the versioned installable ZIP and local images. `make package` runs both gates before writing the
+ZIP and SHA-256 checksum under `dist/`. The browser scenario performs fresh HA onboarding, adds the integration in the
 UI, toggles a Lovelace entity, verifies the synthetic service received the mutation, and deletes
 the isolated test volume on exit.

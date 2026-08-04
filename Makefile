@@ -1,14 +1,18 @@
 .DEFAULT_GOAL := help
 
-.PHONY: bootstrap build check clean dev-down dev-logs dev-up e2e format help test test-e2e test-integration test-unit
+.PHONY: bootstrap build check clean dev-down dev-logs dev-up e2e format help package package-artifact test test-e2e test-integration test-unit
 
 PYTHON := .venv/bin/python
 PYTEST := .venv/bin/pytest
+VERSION := $(shell sed -n 's/.*"version": "\([^"]*\)".*/\1/p' custom_components/poolside/manifest.json)
+ARTIFACT_NAME := poolside-$(VERSION).zip
+ARTIFACT := dist/$(ARTIFACT_NAME)
 
 help:
 	@echo "bootstrap        Create the pinned Python development environment"
 	@echo "check            Run formatting, lint, types, and 100% coverage gate"
-	@echo "build            Run every gate, browser E2E, and build local images"
+	@echo "build            Run every gate, package the integration, and build local images"
+	@echo "package          Run every gate and create the installable release ZIP"
 	@echo "dev-up           Start HA, fake Poolside, Loki, Alloy, and Grafana"
 	@echo "dev-down         Stop the local stack and delete only its named test volumes"
 	@echo "e2e              Run browser UI-to-service E2E in isolated Docker"
@@ -44,7 +48,17 @@ check:
 e2e:
 	./scripts/e2e.sh
 
-build: check e2e
+package: check e2e package-artifact
+
+package-artifact:
+	mkdir -p dist
+	git diff --quiet
+	git diff --cached --quiet
+	git archive --format=zip --prefix=poolside/ --output=$(ARTIFACT) HEAD:custom_components/poolside
+	unzip -t $(ARTIFACT)
+	cd dist && shasum -a 256 $(ARTIFACT_NAME) > $(ARTIFACT_NAME).sha256
+
+build: package
 	docker compose build fake-poolside e2e
 
 dev-up:
