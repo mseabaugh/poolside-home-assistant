@@ -34,11 +34,11 @@ class PoolsideClient:
         """Fetch the complete account configuration."""
         return await self._transport.async_rpc("User.getConfig", {})
 
-    async def async_get_states(self, site_uuid: str) -> Any:
+    async def async_get_states(self, site_uuid: str | int) -> Any:
         """Fetch current string-serialized equipment state."""
-        return await self._transport.async_rpc("Site.getStates", {"siteId": site_uuid})
+        return await self._transport.async_rpc("Site.getStates", {"site": {"siteId": site_uuid}})
 
-    async def async_get_desired_state(self, site_uuid: str) -> Any:
+    async def async_get_desired_state(self, site_uuid: str | int) -> Any:
         """Fetch current high-level desired-state records."""
         return await self._transport.async_rpc("Site.getDesiredState", {"siteId": site_uuid})
 
@@ -56,8 +56,9 @@ class PoolsideClient:
         if discovered.empty:
             return discovered
         site_ids = tuple(discovered.sites)
-        state_tasks = [self.async_get_states(site_uuid) for site_uuid in site_ids]
-        desired_tasks = [self.async_get_desired_state(site_uuid) for site_uuid in site_ids]
+        remote_ids = tuple(discovered.sites[site_uuid].remote_id for site_uuid in site_ids)
+        state_tasks = [self.async_get_states(remote_id) for remote_id in remote_ids]
+        desired_tasks = [self.async_get_desired_state(remote_id) for remote_id in remote_ids]
         runtime = await asyncio.gather(*state_tasks, *desired_tasks)
         split = len(site_ids)
         states = runtime[:split]

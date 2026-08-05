@@ -95,6 +95,7 @@ def test_discovery_accepts_mobile_config_document_array() -> None:
     }
     site = discover_sites(payload).sites["mobile-site"]
     assert site.name == "Synthetic Mobile Site"
+    assert site.remote_id == 42
     assert tuple(site.controls) == ("mobile-control",)
     assert tuple(site.equipment) == ("mobile-device",)
     assert site.schedule_document == {"Schedule": [{"ItemUUID": "mobile-control"}]}

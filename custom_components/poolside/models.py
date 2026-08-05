@@ -112,6 +112,12 @@ class Site:
     raw: Mapping[str, Any] = field(default_factory=dict)
 
     @property
+    def remote_id(self) -> str | int:
+        """Return the API site identifier, falling back for legacy payloads."""
+        value = self.raw.get("_poolside_site_id")
+        return value if isinstance(value, (str, int)) else self.uuid
+
+    @property
     def all_controls(self) -> dict[str, Control]:
         """Return ordinary and Combined Controls indexed together."""
         return {**self.controls, **self.combined_controls}
@@ -212,6 +218,16 @@ def _unwrap_config(payload: Any) -> Mapping[str, Any]:
         )
         if isinstance(site_document, Mapping):
             site = dict(site_document)
+            record = next(
+                (
+                    item
+                    for item in documents
+                    if isinstance(item, Mapping) and item.get("data") is site_document
+                ),
+                None,
+            )
+            if isinstance(record, Mapping) and isinstance(record.get("siteId"), (str, int)):
+                site["_poolside_site_id"] = record["siteId"]
             location = site.get("Location")
             if isinstance(location, Mapping):
                 site.setdefault("UUID", location.get("UUID"))
