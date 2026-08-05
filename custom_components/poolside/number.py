@@ -33,7 +33,9 @@ async def async_setup_entry(
     )
 
 
-def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideControlNumber]:
+def _entities(
+    coordinator: PoolsideCoordinator,
+) -> Iterable[PoolsideControlNumber | PoolsideHeaterTemperature]:
     """Build percentages only for already allow-listed high-level feature Controls."""
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
