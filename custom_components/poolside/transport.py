@@ -57,7 +57,10 @@ def _log_known_error(
         outcome = "connection_error"
     else:
         outcome = "protocol_error"
-    _log_completion(method, started, outcome, correlation_id, type(error).__name__)
+    error_type = type(error).__name__
+    if isinstance(error, CannotConnectError) and error.status is not None:
+        error_type = f"HTTP_{error.status}"
+    _log_completion(method, started, outcome, correlation_id, error_type)
     raise error
 
 
@@ -146,7 +149,9 @@ class CloudTransport:
                 if response.status in _AUTH_FAILURES:
                     raise AuthenticationError("Poolside rejected the access token")
                 if response.status >= _HTTP_ERROR_STATUS:
-                    raise CannotConnectError("Poolside returned an HTTP failure")
+                    raise CannotConnectError(
+                        "Poolside returned an HTTP failure", status=response.status
+                    )
                 try:
                     payload = await response.json(content_type=None)
                 except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
@@ -248,7 +253,9 @@ async def _async_login_request(
             if response.status in _AUTH_FAILURES:
                 raise AuthenticationError("Poolside rejected the username or password")
             if response.status >= _HTTP_ERROR_STATUS:
-                raise CannotConnectError("Poolside returned an HTTP failure during login")
+                raise CannotConnectError(
+                    "Poolside returned an HTTP failure during login", status=response.status
+                )
             try:
                 payload = await response.json(content_type=None)
             except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:

@@ -12,6 +12,11 @@ class AuthenticationError(PoolsideError):
 class CannotConnectError(PoolsideError):
     """The Poolside service could not be reached."""
 
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        """Keep an optional HTTP status for safe diagnostics without logging response bodies."""
+        super().__init__(message)
+        self.status = status
+
 
 class ProtocolError(PoolsideError):
     """A Poolside payload violated the confirmed protocol contract."""

@@ -230,7 +230,7 @@ async def test_login_connection_and_protocol_failures(
     ):
         await _login(FakeSession(FakeResponse(500, {})))
     assert "outcome=connection_error" in caplog.text
-    assert "error_type=CannotConnectError" in caplog.text
+    assert "error_type=HTTP_500" in caplog.text
     assert any(record.levelno == logging.WARNING for record in caplog.records)
     with pytest.raises(CannotConnectError, match="login request failed"):
         await _login(FakeSession(aiohttp.ClientError("synthetic")))
@@ -280,10 +280,16 @@ async def test_rpc_authentication_failures(status: int) -> None:
         await _transport(FakeSession(FakeResponse(status, {}))).async_rpc("ping")
 
 
-async def test_rpc_http_connection_and_timeout_failures() -> None:
+async def test_rpc_http_connection_and_timeout_failures(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Remote HTTP, aiohttp, and timeout failures become safe connectivity errors."""
-    with pytest.raises(CannotConnectError, match="HTTP"):
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.poolside.transport"),
+        pytest.raises(CannotConnectError, match="HTTP"),
+    ):
         await _transport(FakeSession(FakeResponse(500, {}))).async_rpc("ping")
+    assert "error_type=HTTP_500" in caplog.text
     with pytest.raises(CannotConnectError, match="request failed"):
         await _transport(FakeSession(aiohttp.ClientError("synthetic"))).async_rpc("ping")
     with pytest.raises(CannotConnectError, match="request failed"):
