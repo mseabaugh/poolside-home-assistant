@@ -74,6 +74,42 @@ def test_discovery_accepts_mapping_collections_and_root_site(
     assert discover_sites({"Sites": []}).empty
 
 
+def test_discovery_accepts_mobile_config_document_array() -> None:
+    """The mobile API's persisted-document array is normalized safely."""
+    payload = {
+        "result": [
+            {"data": [{"ignored": True}]},
+            {
+                "siteId": 42,
+                "data": {
+                    "Location": {"UUID": "mobile-site", "Name": "Synthetic Mobile Site"},
+                    "BodiesOfWater": [{"UUID": "body-1"}],
+                    "Controls": [{"UUID": "mobile-control", "Name": "Pump", "Type": "Pump"}],
+                    "CombinedControls": [],
+                    "Devices": [{"UUID": "mobile-device", "Name": "Device", "DeviceType": "Pump"}],
+                    "FutureField": {"preserved": True},
+                },
+            },
+            {"data": {"Schedule": [{"ItemUUID": "mobile-control"}]}},
+        ],
+    }
+    site = discover_sites(payload).sites["mobile-site"]
+    assert site.name == "Synthetic Mobile Site"
+    assert tuple(site.controls) == ("mobile-control",)
+    assert tuple(site.equipment) == ("mobile-device",)
+    assert site.schedule_document == {"Schedule": [{"ItemUUID": "mobile-control"}]}
+    assert site.raw["FutureField"] == {"preserved": True}
+
+
+def test_mobile_config_array_preserves_explicit_site_without_optional_documents() -> None:
+    """A minimal mobile document remains valid when optional records are absent."""
+    site = discover_sites(
+        [{"data": {"UUID": "explicit-site", "Controls": [{"UUID": "control"}]}}]
+    ).sites["explicit-site"]
+    assert site.name == "Poolside"
+    assert site.schedule_document == {}
+
+
 def test_discovery_fallback_names_types_and_equipment_sources() -> None:
     """Missing display metadata uses safe local fallbacks while identifiers remain required."""
     payload = {

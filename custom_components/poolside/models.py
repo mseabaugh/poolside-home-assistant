@@ -193,6 +193,42 @@ def _unwrap_config(payload: Any) -> Mapping[str, Any]:
     current = decode_json_value(payload)
     if isinstance(current, Mapping) and "result" in current:
         current = decode_json_value(current["result"])
+    # The mobile API returns User.getConfig as a list of persisted documents.
+    # The site document is the record containing BodiesOfWater/Controls; the
+    # remaining records are independent telemetry, billing, and schedule
+    # documents.  Fold only those documented fields into the site document and
+    # retain every unknown field for forward compatibility.
+    if isinstance(current, list):
+        documents = [decode_json_value(item) for item in current]
+        site_document = next(
+            (
+                item.get("data")
+                for item in documents
+                if isinstance(item, Mapping)
+                and isinstance(item.get("data"), Mapping)
+                and any(key in item["data"] for key in ("BodiesOfWater", "Controls"))
+            ),
+            None,
+        )
+        if isinstance(site_document, Mapping):
+            site = dict(site_document)
+            location = site.get("Location")
+            if isinstance(location, Mapping):
+                site.setdefault("UUID", location.get("UUID"))
+                site.setdefault("Name", location.get("Name"))
+            schedule_document = next(
+                (
+                    item.get("data", {}).get("Schedule")
+                    for item in documents
+                    if isinstance(item, Mapping)
+                    and isinstance(item.get("data"), Mapping)
+                    and isinstance(item["data"].get("Schedule"), list)
+                ),
+                None,
+            )
+            if isinstance(schedule_document, list):
+                site["Schedule"] = {"Schedule": schedule_document}
+            return {"Sites": [site]}
     return require_mapping(current, "Poolside configuration")
 
 
