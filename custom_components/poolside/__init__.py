@@ -32,7 +32,7 @@ async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
     """Register bundled frontend assets on the local Home Assistant HTTP server."""
     www = Path(__file__).parent / "www"
     await hass.http.async_register_static_paths(
-        [StaticPathConfig("/poolside", str(www), cache_headers=True)]
+        [StaticPathConfig("/poolside", str(www), cache_headers=False)]
     )
     add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
     return True
