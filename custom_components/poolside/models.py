@@ -46,6 +46,11 @@ class Control:
         return tuple(str(item) for item in value)
 
     @property
+    def available(self) -> bool:
+        """Return whether the service currently allows this control to appear."""
+        return not self.restricted and not self.disabled_reasons
+
+    @property
     def is_light(self) -> bool:
         """Return whether this is a discovered light Control."""
         # Runtime desired-state documents reuse generic fields (including

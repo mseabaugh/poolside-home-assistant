@@ -28,6 +28,8 @@ from custom_components.poolside.models import (
     discover_sites,
 )
 from custom_components.poolside.number import PoolsideControlNumber, PoolsideHeaterTemperature
+from custom_components.poolside.number import _entities as number_entities
+from custom_components.poolside.switch import PoolsideSwitch
 from custom_components.poolside.select import PoolsideThemeSelect, _theme_options
 from custom_components.poolside.select import _entities as select_entities
 
@@ -275,3 +277,38 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
     )
     if dynamic_heater.native_value is not None:
         raise AssertionError("malformed setpoint should be unavailable")
+
+
+async def test_switch_write_round_trip(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Binary feature controls remain writable through the safety façade."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    switch = PoolsideSwitch(coordinator, "site-alpha", "filter-one")
+    await switch.async_turn_on()
+    assert coordinator.control_writes[-1][2] == {"Status": "ON"}
+
+
+def test_disabled_heater_is_hidden_from_number_entities(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Restricted heaters are retained in data but omitted from UI discovery."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    heater = site.controls["heat-one"]
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                controls={
+                    **site.controls,
+                    heater.uuid: replace(heater, desired={"Restricted": True}),
+                },
+            )
+        }
+    )
+    assert all(entity.control_uuid != heater.uuid for entity in number_entities(coordinator))

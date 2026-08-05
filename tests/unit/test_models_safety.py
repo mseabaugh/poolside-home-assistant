@@ -51,6 +51,7 @@ def test_discovery_and_runtime_merge(
     }
     assert merged.controls["light-one"].desired["Brightness"] == 65
     assert merged.controls["jets-restricted"].restricted
+    assert not merged.controls["jets-restricted"].available
     assert merged.controls["jets-restricted"].disabled_reasons == ("synthetic-reason",)
     assert not merged.controls["heat-one"].is_light
 

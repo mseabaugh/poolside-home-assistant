@@ -47,11 +47,11 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     await _setup(hass, config_entry, fake_client, monkeypatch)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, config_entry.entry_id)
-    assert len(entries) == 16
+    assert len(entries) == 15
     assert _entity_id(hass, "light", "light-one")
     assert _entity_id(hass, "light", "light-combined")
     assert _entity_id(hass, "switch", "filter-one")
-    assert _entity_id(hass, "switch", "jets-restricted")
+    assert er.async_get(hass).async_get_entity_id("switch", DOMAIN, "jets-restricted") is None
     assert _entity_id(hass, "number", "filter-one_power_level")
     assert _entity_id(hass, "button", "theme-calm_activate")
     assert _entity_id(hass, "select", "site-alpha_theme")
@@ -130,13 +130,7 @@ async def test_entity_services_reach_safe_transport_and_reconcile(
     assert light_write["DesiredStates"][0]["Brightness"] == 50
     assert "10|20|30" in light_write["DesiredStates"][0]["Color"]
 
-    with pytest.raises(Exception, match="restricted or disabled"):
-        await hass.services.async_call(
-            "switch",
-            "turn_on",
-            {"entity_id": _entity_id(hass, "switch", "jets-restricted")},
-            blocking=True,
-        )
+    assert er.async_get(hass).async_get_entity_id("switch", DOMAIN, "jets-restricted") is None
     assert not any(
         params is not None and "pump-one" in str(params)
         for method, params in fake_transport.calls

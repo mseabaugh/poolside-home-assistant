@@ -39,10 +39,11 @@ def _entities(
     """Build percentages only for already allow-listed high-level feature Controls."""
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
-            if _safe_binary(control) and control.supports_percentage:
+            if control.available and _safe_binary(control) and control.supports_percentage:
                 yield PoolsideControlNumber(coordinator, site.uuid, control.uuid)
         for control in site.heating_controls.values():
-            yield PoolsideHeaterTemperature(coordinator, site.uuid, control.uuid)
+            if control.available:
+                yield PoolsideHeaterTemperature(coordinator, site.uuid, control.uuid)
 
 
 class PoolsideControlNumber(PoolsideEntity, NumberEntity):

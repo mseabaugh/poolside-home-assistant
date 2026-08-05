@@ -47,7 +47,7 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideLight]:
     """Build one entity for every ordinary or Combined light Control."""
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
-            if control.is_light:
+            if control.available and control.is_light:
                 yield PoolsideLight(coordinator, site.uuid, control.uuid)
 
 
