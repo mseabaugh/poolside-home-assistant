@@ -29,9 +29,9 @@ from custom_components.poolside.models import (
 )
 from custom_components.poolside.number import PoolsideControlNumber, PoolsideHeaterTemperature
 from custom_components.poolside.number import _entities as number_entities
-from custom_components.poolside.switch import PoolsideSwitch
 from custom_components.poolside.select import PoolsideThemeSelect, _theme_options
 from custom_components.poolside.select import _entities as select_entities
+from custom_components.poolside.switch import PoolsideSwitch
 
 pytestmark = pytest.mark.unit
 
