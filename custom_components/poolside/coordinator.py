@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import suppress
+from dataclasses import replace
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
@@ -56,12 +57,31 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         self._push_task: asyncio.Task[None] | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        self._pending_controls: dict[tuple[str, str], dict[str, object]] = {}
+
+    def _apply_pending_controls(self, data: PoolsideData) -> PoolsideData:
+        """Overlay successful local writes until the cloud snapshot confirms them."""
+        sites = dict(data.sites)
+        for (site_uuid, control_uuid), changes in tuple(self._pending_controls.items()):
+            site = sites.get(site_uuid)
+            control = site.all_controls.get(control_uuid) if site else None
+            if site is None or control is None:
+                continue
+            if all(control.desired.get(key) == value for key, value in changes.items()):
+                self._pending_controls.pop((site_uuid, control_uuid), None)
+                continue
+            updated = replace(control, desired={**control.desired, **changes})
+            ordinary = dict(site.controls)
+            combined = dict(site.combined_controls)
+            (combined if control_uuid in combined else ordinary)[control_uuid] = updated
+            sites[site_uuid] = replace(site, controls=ordinary, combined_controls=combined)
+        return replace(data, sites=sites)
 
     async def _async_update_data(self) -> PoolsideData:
         """Fetch a complete consistent account snapshot."""
         _LOGGER.debug("poolside_refresh outcome=started")
         try:
-            data = await self.client.async_load()
+            data = self._apply_pending_controls(await self.client.async_load())
         except AuthenticationError as err:
             _LOGGER.warning("poolside_refresh outcome=authentication_error")
             raise ConfigEntryAuthFailed from err
@@ -161,6 +181,7 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
     ) -> None:
         """Write one safe Control mutation and reconcile confirmation."""
         await self.client.async_set_control(self.site(site_uuid), control_uuid, changes)
+        self._pending_controls[(site_uuid, control_uuid)] = dict(changes)
         await self.async_request_refresh()
 
     async def async_activate_theme(self, site_uuid: str, theme_uuid: str) -> None:

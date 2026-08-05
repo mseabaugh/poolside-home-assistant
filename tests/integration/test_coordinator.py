@@ -94,6 +94,30 @@ async def test_update_translates_domain_failures(
     await coordinator.async_shutdown()
 
 
+async def test_stale_refresh_keeps_successful_local_control_write(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """A stale cloud response does not make a just-written control visibly bounce."""
+    from custom_components.poolside.models import apply_runtime, discover_sites
+
+    site = apply_runtime(discover_sites(user_config).sites["site-alpha"], {}, desired_payload)
+    coordinator = PoolsideCoordinator(hass, config_entry, LoadClient(PoolsideData({site.uuid: site})))  # type: ignore[arg-type]
+    coordinator._pending_controls[(site.uuid, "light-one")] = {"Status": "OFF"}
+    data = coordinator._apply_pending_controls(PoolsideData({site.uuid: site}))
+    assert data.sites[site.uuid].controls["light-one"].desired["Status"] == "OFF"
+    assert (site.uuid, "light-one") in coordinator._pending_controls
+    coordinator._pending_controls[(site.uuid, "light-one")] = {"Status": "ON"}
+    confirmed = coordinator._apply_pending_controls(PoolsideData({site.uuid: site}))
+    assert (site.uuid, "light-one") not in coordinator._pending_controls
+    assert confirmed.sites[site.uuid].controls["light-one"].desired["Status"] == "ON"
+    coordinator._pending_controls[("missing-site", "missing-control")] = {"Status": "OFF"}
+    coordinator._apply_pending_controls(PoolsideData({site.uuid: site}))
+    await coordinator.async_shutdown()
+
+
 async def test_update_logs_safe_http_failure_metadata(
     hass: HomeAssistant, config_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
 ) -> None:
