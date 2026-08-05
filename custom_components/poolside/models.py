@@ -48,11 +48,22 @@ class Control:
     @property
     def is_light(self) -> bool:
         """Return whether this is a discovered light Control."""
+        # Runtime desired-state documents reuse generic fields (including
+        # LightName/Brightness) for every control.  Classification must come
+        # from the discovered control schema, never from desired telemetry.
         lowered = self.type.lower()
-        return "light" in lowered or any(
-            key in self.raw or key in self.desired
-            for key in ("AvailableColors", "AvailableShows", "LightName", "Brightness")
-        )
+        return "light" in lowered or isinstance(self.raw.get("Light"), Mapping)
+
+    @property
+    def is_heating(self) -> bool:
+        """Return whether this is a discovered pool/spa heating Control."""
+        return self.type.lower() in {"heating", "heater", "heatingcontrol"}
+
+    @property
+    def water_body_uuid(self) -> str | None:
+        """Return the associated pool/spa body identifier when provided."""
+        value = self.raw.get("BodyOfWater")
+        return value if isinstance(value, str) and value else None
 
     @property
     def supports_percentage(self) -> bool:
@@ -121,6 +132,17 @@ class Site:
     def all_controls(self) -> dict[str, Control]:
         """Return ordinary and Combined Controls indexed together."""
         return {**self.controls, **self.combined_controls}
+
+    @property
+    def heating_controls(self) -> Mapping[str, Control]:
+        """Return at most one heating control per pool/spa body."""
+        result: dict[str, Control] = {}
+        for control in self.all_controls.values():
+            if not control.is_heating:
+                continue
+            key = control.water_body_uuid or control.uuid
+            result.setdefault(key, control)
+        return result
 
 
 @dataclass(frozen=True, slots=True)

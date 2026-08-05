@@ -192,6 +192,19 @@ def test_control_properties_with_non_list_values(user_config: dict[str, object])
     assert changed.disabled_reasons == ()
 
 
+def test_control_classification_uses_discovery_schema_not_runtime_fields(
+    user_config: dict[str, object], desired_payload: dict[str, object]
+) -> None:
+    """Generic runtime light fields do not turn heaters into lights."""
+    site = apply_runtime(discover_sites(user_config).sites["site-alpha"], {}, desired_payload)
+    heating = site.controls["heat-one"]
+    assert not heating.is_light
+    assert heating.is_heating
+    assert tuple(site.heating_controls) == ("heat-one",)
+    light = site.controls["light-one"]
+    assert light.is_light
+
+
 def test_safety_policy_authorizes_only_confirmed_targets_and_fields(
     user_config: dict[str, object], desired_payload: dict[str, object]
 ) -> None:
