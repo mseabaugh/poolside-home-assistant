@@ -133,6 +133,12 @@ class CloudTransport:
         """Execute one JSON-RPC operation with body-free observability."""
         trace_id = str(uuid4())
         correlation_id = trace_id.replace("-", "")[:12]
+        _LOGGER.debug(
+            "poolside_rpc request correlation_id=%s method=%s params_count=%s",
+            correlation_id,
+            method,
+            len(params) if params else 0,
+        )
         request: dict[str, Any] = {
             "id": str(uuid4()),
             "jsonrpc": "2.0",
@@ -180,6 +186,12 @@ class CloudTransport:
         if "result" not in mapping:
             _log_completion(method, started, "protocol_error", correlation_id)
             raise ProtocolError("Poolside response did not contain a result")
+        _LOGGER.debug(
+            "poolside_rpc response correlation_id=%s method=%s result_type=%s",
+            correlation_id,
+            method,
+            type(mapping["result"]).__name__,
+        )
         _log_completion(method, started, "success", correlation_id)
         return decode_json_value(mapping["result"])
 

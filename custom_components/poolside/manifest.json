@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/mseabaugh/poolside-home-assistant/issues",
   "loggers": ["custom_components.poolside"],
   "requirements": [],
-  "version": "0.1.12"
+  "version": "0.1.13"
 }

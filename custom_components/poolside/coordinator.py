@@ -59,8 +59,9 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
 
     async def _async_update_data(self) -> PoolsideData:
         """Fetch a complete consistent account snapshot."""
+        _LOGGER.debug("poolside_refresh outcome=started")
         try:
-            return await self.client.async_load()
+            data = await self.client.async_load()
         except AuthenticationError as err:
             _LOGGER.warning("poolside_refresh outcome=authentication_error")
             raise ConfigEntryAuthFailed from err
@@ -76,6 +77,9 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
                 " ".join(f"{key}={value}" for key, value in details.items()),
             )
             raise UpdateFailed("Poolside refresh failed") from err
+        else:
+            _LOGGER.debug("poolside_refresh outcome=success site_count=%s", len(data.sites))
+            return data
 
     def start_push(self) -> None:
         """Start reconnecting push and authenticated heartbeat listeners."""
