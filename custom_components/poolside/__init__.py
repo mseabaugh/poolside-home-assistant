@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.core import HomeAssistant
@@ -23,6 +25,15 @@ class PoolsideRuntimeData:
 
 
 type PoolsideConfigEntry = ConfigEntry[PoolsideRuntimeData]
+
+
+async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
+    """Register bundled frontend assets on the local Home Assistant HTTP server."""
+    www = Path(__file__).parent / "www"
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig("/poolside", str(www), cache_headers=True)]
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> bool:

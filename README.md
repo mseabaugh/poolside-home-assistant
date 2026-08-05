@@ -35,28 +35,18 @@ until their exact protocols and concurrency behavior are confirmed.
 
 ### Optional body selector card
 
-The repository includes a Lovelace card at
-`custom_components/poolside/www/poolside-body-selector.js`. The simplest installation does
-not require filesystem access: open **Settings → Dashboards → ⋮ → Resources → Add resource**
-and use the raw GitHub URL below, with resource type **JavaScript module**:
+The integration serves its bundled Lovelace card locally at
+`/poolside/poolside-body-selector.js`. Open **Settings → Dashboards → ⋮ → Resources → Add
+resource**, use this URL, and select **JavaScript module**:
 
 ```text
-https://cdn.jsdelivr.net/gh/mseabaugh/poolside-home-assistant@main/custom_components/poolside/www/poolside-body-selector.js
-```
-
-If your HA installation exposes its config directory (for example through the File editor or
-Terminal add-on), you can instead copy the file to `config/www/poolside-body-selector.js` and
-add this local resource:
-
-```yaml
-url: /local/poolside-body-selector.js
-type: module
+/poolside/poolside-body-selector.js
 ```
 
 After adding or changing a resource, reload the browser with **Ctrl/Cmd+Shift+R**. The card is
 then added from the dashboard editor as **Custom: Poolside Body Selector**.
 
-If it still does not appear in the picker, add a **Manual** card and paste this YAML:
+If it does not appear in the picker, add a **Manual** card and paste this YAML:
 
 ```yaml
 type: custom:poolside-body-selector
