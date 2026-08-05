@@ -6,22 +6,24 @@
     },
     "error": {
       "cannot_connect": "Unable to connect to Poolside.",
-      "invalid_auth": "The access token was rejected.",
+      "invalid_auth": "The username or password was rejected.",
       "unknown": "An unexpected error occurred."
     },
     "step": {
       "reauth_confirm": {
         "data": {
-          "access_token": "Access token"
+          "username": "Username",
+          "password": "Password"
         },
-        "description": "Enter a replacement Poolside bearer access token.",
+        "description": "Enter your Poolside username and password.",
         "title": "Reauthenticate Poolside"
       },
       "user": {
         "data": {
-          "access_token": "Access token"
+          "username": "Username",
+          "password": "Password"
         },
-        "description": "Enter a Poolside bearer access token. Username/password login is not yet supported because that protocol has not been confirmed.",
+        "description": "Poolside will securely exchange these credentials for a bearer token.",
         "title": "Connect to Poolside"
       }
     }

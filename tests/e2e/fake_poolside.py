@@ -10,6 +10,8 @@ from typing import Any, cast
 from aiohttp import WSMsgType, web
 
 SYNTHETIC_TOKEN = "synthetic-token"
+SYNTHETIC_USERNAME = "synthetic-owner"
+SYNTHETIC_PASSWORD = "Synthetic-Test-Password-2026!"
 _FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 
@@ -57,8 +59,6 @@ class FakePoolsideService:
 
     async def rpc(self, request: web.Request) -> web.Response:
         """Handle confirmed JSON-RPC calls and mutate only synthetic Controls."""
-        if not self._authorized(request):
-            return web.json_response({"error": "unauthorized"}, status=401)
         try:
             payload = await request.json()
         except json.JSONDecodeError:
@@ -67,6 +67,10 @@ class FakePoolsideService:
         method = payload.get("method")
         params = payload.get("params", {})
         result: Any
+        if method == "User.login":
+            return self._login_response(payload, params)
+        if not self._authorized(request):
+            return web.json_response({"error": "unauthorized"}, status=401)
         if method == "ping":
             result = True
         elif method == "User.getConfig":
@@ -97,6 +101,31 @@ class FakePoolsideService:
                 "id": payload.get("id"),
                 "jsonrpc": "2.0",
                 "result": result,
+                "traceId": payload.get("traceId"),
+            }
+        )
+
+    @staticmethod
+    def _login_response(payload: dict[str, Any], params: Any) -> web.Response:
+        """Issue the synthetic token only for the isolated test account."""
+        if not isinstance(params, dict):
+            params = {}
+        if (
+            params.get("username") != SYNTHETIC_USERNAME
+            or params.get("password") != SYNTHETIC_PASSWORD
+        ):
+            return web.json_response(
+                {
+                    "error": {"code": 403, "message": "Authentication failed"},
+                    "id": payload.get("id"),
+                    "jsonrpc": "2.0",
+                }
+            )
+        return web.json_response(
+            {
+                "id": payload.get("id"),
+                "jsonrpc": "2.0",
+                "result": {"accessToken": SYNTHETIC_TOKEN},
                 "traceId": payload.get("traceId"),
             }
         )

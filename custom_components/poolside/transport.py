@@ -21,6 +21,20 @@ from .parser import decode_json_value, require_mapping
 _LOGGER = logging.getLogger(__name__)
 _HTTP_ERROR_STATUS = 400
 _AUTH_FAILURES: Final = frozenset({401, 403})
+_LOGIN_METHOD: Final = "User.login"
+_TOKEN_FIELDS: Final = ("accessToken", "access_token", "token", "Token")
+
+
+def _log_completion(method: str, started: float, outcome: str, correlation_id: str) -> None:
+    """Log only operation metadata that is safe for central collection."""
+    duration_ms = round((monotonic() - started) * 1000)
+    _LOGGER.debug(
+        "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s",
+        correlation_id,
+        method,
+        outcome,
+        duration_ms,
+    )
 
 
 class Transport(Protocol):
@@ -114,20 +128,20 @@ class CloudTransport:
                 except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
                     raise ProtocolError("Poolside returned malformed JSON") from err
         except AuthenticationError:
-            self._log_completion(method, started, "authentication_error", correlation_id)
+            _log_completion(method, started, "authentication_error", correlation_id)
             raise
         except (TimeoutError, aiohttp.ClientError) as err:
-            self._log_completion(method, started, "connection_error", correlation_id)
+            _log_completion(method, started, "connection_error", correlation_id)
             raise CannotConnectError("Poolside request failed") from err
 
         mapping = require_mapping(payload, "JSON-RPC response")
         if "error" in mapping:
-            self._log_completion(method, started, "remote_error", correlation_id)
+            _log_completion(method, started, "remote_error", correlation_id)
             raise RemoteError("Poolside returned a JSON-RPC error")
         if "result" not in mapping:
-            self._log_completion(method, started, "protocol_error", correlation_id)
+            _log_completion(method, started, "protocol_error", correlation_id)
             raise ProtocolError("Poolside response did not contain a result")
-        self._log_completion(method, started, "success", correlation_id)
+        _log_completion(method, started, "success", correlation_id)
         return decode_json_value(mapping["result"])
 
     async def async_messages(self) -> AsyncIterator[Mapping[str, Any]]:
@@ -165,14 +179,98 @@ class CloudTransport:
         except (TimeoutError, aiohttp.ClientError) as err:
             raise CannotConnectError("Poolside WebSocket connection failed") from err
 
-    @staticmethod
-    def _log_completion(method: str, started: float, outcome: str, correlation_id: str) -> None:
-        """Log only operation metadata that is safe for central collection."""
-        duration_ms = round((monotonic() - started) * 1000)
-        _LOGGER.debug(
-            "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s",
-            correlation_id,
-            method,
-            outcome,
-            duration_ms,
-        )
+
+async def async_login(
+    session: aiohttp.ClientSession,
+    username: str,
+    password: str,
+    endpoints: Endpoints | None = None,
+) -> str:
+    """Exchange Poolside credentials for a bearer token through ``User.login``."""
+    if not username.strip() or not password:
+        raise ValueError("Username and password must not be empty")
+
+    resolved_endpoints = endpoints or Endpoints()
+    trace_id = str(uuid4())
+    correlation_id = trace_id.replace("-", "")[:12]
+    request = {
+        "id": str(uuid4()),
+        "jsonrpc": "2.0",
+        "method": _LOGIN_METHOD,
+        "params": {"username": username.strip(), "password": password},
+        "traceId": trace_id,
+    }
+    started = monotonic()
+    payload = await _async_login_request(
+        session, resolved_endpoints, request, started, correlation_id
+    )
+    return _parse_login_response(payload, started, correlation_id)
+
+
+async def _async_login_request(
+    session: aiohttp.ClientSession,
+    endpoints: Endpoints,
+    request: Mapping[str, Any],
+    started: float,
+    correlation_id: str,
+) -> Any:
+    """Execute the unauthenticated login request and return its decoded JSON body."""
+    try:
+        async with session.post(
+            endpoints.api_url,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            json=request,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as response:
+            if response.status in _AUTH_FAILURES:
+                raise AuthenticationError("Poolside rejected the username or password")
+            if response.status >= _HTTP_ERROR_STATUS:
+                raise CannotConnectError("Poolside returned an HTTP failure during login")
+            try:
+                payload = await response.json(content_type=None)
+            except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
+                raise ProtocolError("Poolside returned malformed login JSON") from err
+    except AuthenticationError:
+        _log_completion(_LOGIN_METHOD, started, "authentication_error", correlation_id)
+        raise
+    except (TimeoutError, aiohttp.ClientError) as err:
+        _log_completion(_LOGIN_METHOD, started, "connection_error", correlation_id)
+        raise CannotConnectError("Poolside login request failed") from err
+    return payload
+
+
+def _parse_login_response(payload: Any, started: float, correlation_id: str) -> str:
+    """Parse a login response and return only its bearer token."""
+    mapping = require_mapping(payload, "Poolside login response")
+    if "error" in mapping:
+        error = mapping["error"]
+        code = error.get("code") if isinstance(error, Mapping) else None
+        if code in _AUTH_FAILURES:
+            _log_completion(_LOGIN_METHOD, started, "authentication_error", correlation_id)
+            raise AuthenticationError("Poolside rejected the username or password")
+        _log_completion(_LOGIN_METHOD, started, "remote_error", correlation_id)
+        raise RemoteError("Poolside returned a login error")
+    if "result" not in mapping:
+        _log_completion(_LOGIN_METHOD, started, "protocol_error", correlation_id)
+        raise ProtocolError("Poolside login response did not contain a result")
+
+    token = _extract_login_token(decode_json_value(mapping["result"]))
+    if token is None:
+        _log_completion(_LOGIN_METHOD, started, "protocol_error", correlation_id)
+        raise ProtocolError("Poolside login did not return an access token")
+    _log_completion(_LOGIN_METHOD, started, "success", correlation_id)
+    return token
+
+
+def _extract_login_token(result: Any) -> str | None:
+    """Extract the bearer token without retaining or logging the submitted password."""
+    if isinstance(result, str):
+        token = result.strip()
+        return token or None
+    if not isinstance(result, Mapping):
+        return None
+    for field in _TOKEN_FIELDS:
+        value = result.get(field)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None

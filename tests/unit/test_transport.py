@@ -18,7 +18,13 @@ from custom_components.poolside.exceptions import (
     ProtocolError,
     RemoteError,
 )
-from custom_components.poolside.transport import CloudTransport, Endpoints, resolve_endpoints
+from custom_components.poolside.transport import (
+    CloudTransport,
+    Endpoints,
+    _extract_login_token,
+    async_login,
+    resolve_endpoints,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -102,6 +108,17 @@ def _transport(session: FakeSession) -> CloudTransport:
     )
 
 
+async def _login(
+    session: FakeSession,
+    username: str = "synthetic-user",
+    password: str | None = None,
+    endpoints: Endpoints | None = None,
+) -> str:
+    """Call the production login seam with the injected fake session."""
+    password = "synthetic-password" if password is None else password
+    return await async_login(session, username, password, endpoints)  # type: ignore[arg-type]
+
+
 def test_endpoint_resolution_is_production_fixed_and_test_explicit() -> None:
     """Environment values cannot redirect production traffic without explicit test mode."""
     assert resolve_endpoints({"POOLSIDE_API_URL": "http://ignored"}) == Endpoints(API_URL, WS_URL)
@@ -135,6 +152,95 @@ def test_transport_rejects_empty_token() -> None:
     """An empty credential never reaches a remote service."""
     with pytest.raises(ValueError, match="must not be empty"):
         CloudTransport(FakeSession(), " ")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ("  returned-token  ", "returned-token"),
+        ({"accessToken": "camel-token"}, "camel-token"),
+        ({"access_token": "snake-token"}, "snake-token"),
+        ({"token": "plain-token"}, "plain-token"),
+        ({"Token": "title-token"}, "title-token"),
+    ],
+)
+async def test_login_exchanges_credentials_without_bearer_header(
+    result: Any, expected: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Credential login calls User.login and keeps secrets out of observability."""
+    session = FakeSession(FakeResponse(200, {"result": result}))
+    with caplog.at_level(logging.DEBUG):
+        assert (
+            await _login(
+                session,
+                " synthetic-user ",
+                "synthetic-password",
+                Endpoints("https://login.invalid", "wss://unused"),
+            )
+            == expected
+        )
+    call = session.post_calls[0]
+    assert call["url"] == "https://login.invalid"
+    assert "Authorization" not in call["headers"]
+    assert call["json"]["method"] == "User.login"
+    assert call["json"]["params"] == {
+        "username": "synthetic-user",
+        "password": "synthetic-password",
+    }
+    assert "synthetic-password" not in caplog.text
+    assert "outcome=success" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        (123, None),
+        ({}, None),
+        ({"accessToken": ""}, None),
+        ({"access_token": "  snake-token  "}, "snake-token"),
+        ("", None),
+    ],
+)
+def test_login_token_extraction_is_conservative(result: Any, expected: str | None) -> None:
+    """Only non-empty supported token fields are accepted."""
+    assert _extract_login_token(result) == expected
+
+
+@pytest.mark.parametrize("credentials", [("", "password"), ("username", "")])
+async def test_login_rejects_empty_credentials(credentials: tuple[str, str]) -> None:
+    """Blank credentials never reach the network."""
+    with pytest.raises(ValueError, match="must not be empty"):
+        await _login(FakeSession(), *credentials)
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_login_http_authentication_failures(status: int) -> None:
+    """HTTP authentication failures map to the reauthentication contract."""
+    with pytest.raises(AuthenticationError, match="username or password"):
+        await _login(FakeSession(FakeResponse(status, {})))
+
+
+async def test_login_connection_and_protocol_failures() -> None:
+    """Login distinguishes transport, malformed, remote, and incomplete responses."""
+    with pytest.raises(CannotConnectError, match="HTTP failure"):
+        await _login(FakeSession(FakeResponse(500, {})))
+    with pytest.raises(CannotConnectError, match="login request failed"):
+        await _login(FakeSession(aiohttp.ClientError("synthetic")))
+    with pytest.raises(CannotConnectError, match="login request failed"):
+        await _login(FakeSession(TimeoutError()))
+    malformed = json.JSONDecodeError("synthetic", "x", 0)
+    with pytest.raises(ProtocolError, match="malformed login JSON"):
+        await _login(FakeSession(FakeResponse(200, malformed)))
+    with pytest.raises(AuthenticationError, match="username or password"):
+        await _login(FakeSession(FakeResponse(200, {"error": {"code": 403}})))
+    with pytest.raises(RemoteError, match="login error"):
+        await _login(FakeSession(FakeResponse(200, {"error": {"code": -1}})))
+    with pytest.raises(ProtocolError, match="did not contain a result"):
+        await _login(FakeSession(FakeResponse(200, {"jsonrpc": "2.0"})))
+    with pytest.raises(ProtocolError, match="did not return an access token"):
+        await _login(FakeSession(FakeResponse(200, {"result": {"user": "no-token"}})))
+    with pytest.raises(ProtocolError, match="Expected object"):
+        await _login(FakeSession(FakeResponse(200, "not-an-object")))
 
 
 async def test_rpc_success_and_request_metadata(caplog: pytest.LogCaptureFixture) -> None:

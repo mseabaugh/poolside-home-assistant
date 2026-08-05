@@ -11,7 +11,7 @@ Poolside cloud. No direct controller LAN protocol has been verified.
 
 ## Current release scope
 
-- UI configuration using a user-supplied Poolside access token.
+- UI configuration using a Poolside username and password exchanged through `User.login`.
 - Dynamic discovery of sites, Controls, Combined Controls, Themes, schedules, and equipment.
 - Cloud-push updates with periodic reconciliation.
 - Read-only equipment telemetry and schedule calendar entities.
@@ -31,11 +31,10 @@ until their exact protocols and concurrency behavior are confirmed.
 3. Optionally verify the ZIP against the adjacent `.sha256` file.
 4. Restart Home Assistant.
 5. Open **Settings → Devices & services → Add integration → Poolside**.
-6. Enter a valid Poolside bearer access token.
+6. Enter your Poolside username and password.
 
-The token is stored in the Home Assistant config entry and is never included in diagnostics or
-logs. The project does not currently implement username/password login because that protocol was
-not present in the source captures.
+The returned bearer token is stored in the Home Assistant config entry; the username and password
+are never stored, included in diagnostics, or written to logs.
 
 ## Developer workflow
 

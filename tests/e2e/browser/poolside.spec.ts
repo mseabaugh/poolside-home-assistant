@@ -58,7 +58,8 @@ test("user adds Poolside and a UI switch round-trips through the application", a
   const poolsideBrand = page.getByText("Poolside", { exact: true }).last();
   await expect(poolsideBrand).toBeVisible({ timeout: 60_000 });
   await poolsideBrand.click();
-  await page.getByRole("textbox", { name: /^access token/i }).fill("synthetic-token");
+  await page.getByRole("textbox", { name: /^username/i }).fill("synthetic-owner");
+  await page.getByRole("textbox", { name: /^password/i }).fill(password);
   await page.getByRole("button", { name: /submit/i }).click();
   await expect(page.getByText("The Attendant", { exact: true })).toBeVisible({
     timeout: 60_000,

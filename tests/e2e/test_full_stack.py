@@ -15,8 +15,13 @@ from custom_components.poolside.exceptions import (
     CannotConnectError,
     RemoteError,
 )
-from custom_components.poolside.transport import CloudTransport, Endpoints
-from tests.e2e.fake_poolside import SYNTHETIC_TOKEN, FakePoolsideService
+from custom_components.poolside.transport import CloudTransport, Endpoints, async_login
+from tests.e2e.fake_poolside import (
+    SYNTHETIC_PASSWORD,
+    SYNTHETIC_TOKEN,
+    SYNTHETIC_USERNAME,
+    FakePoolsideService,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -31,10 +36,15 @@ async def test_real_http_websocket_read_write_and_push(
     ws_url = str(server.make_url("/websocket")).replace("http://", "ws://", 1)
 
     async with aiohttp.ClientSession() as session:
+        endpoints = Endpoints(api_url, ws_url)
+        assert (
+            await async_login(session, SYNTHETIC_USERNAME, SYNTHETIC_PASSWORD, endpoints)
+            == SYNTHETIC_TOKEN
+        )
         transport = CloudTransport(
             session,
             SYNTHETIC_TOKEN,
-            Endpoints(api_url, ws_url),
+            endpoints,
             websocket_heartbeat=None,
         )
         client = PoolsideClient(transport)
@@ -72,6 +82,8 @@ async def test_real_service_rejects_invalid_credentials(
     api_url = str(server.make_url("/api/jsonrpc/v1"))
     ws_url = str(server.make_url("/websocket")).replace("http://", "ws://", 1)
     async with aiohttp.ClientSession() as session:
+        with pytest.raises(AuthenticationError):
+            await async_login(session, "wrong-user", "wrong-password", Endpoints(api_url, ws_url))
         transport = CloudTransport(session, "wrong-token", Endpoints(api_url, ws_url))
         with pytest.raises(AuthenticationError, match="rejected"):
             await transport.async_rpc("ping")
