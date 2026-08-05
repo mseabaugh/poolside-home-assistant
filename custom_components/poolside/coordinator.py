@@ -62,8 +62,19 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         try:
             return await self.client.async_load()
         except AuthenticationError as err:
+            _LOGGER.warning("poolside_refresh outcome=authentication_error")
             raise ConfigEntryAuthFailed from err
         except (CannotConnectError, PoolsideError) as err:
+            details = {"error_type": type(err).__name__}
+            if isinstance(err, CannotConnectError):
+                if err.status is not None:
+                    details["status"] = str(err.status)
+                if err.content_type is not None:
+                    details["content_type"] = err.content_type
+            _LOGGER.warning(
+                "poolside_refresh outcome=failed %s",
+                " ".join(f"{key}={value}" for key, value in details.items()),
+            )
             raise UpdateFailed("Poolside refresh failed") from err
 
     def start_push(self) -> None:

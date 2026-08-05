@@ -94,6 +94,20 @@ async def test_update_translates_domain_failures(
     await coordinator.async_shutdown()
 
 
+async def test_update_logs_safe_http_failure_metadata(
+    hass: HomeAssistant, config_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Refresh diagnostics expose status metadata without response contents."""
+    failure = CannotConnectError("synthetic", status=502, content_type="text/html")
+    coordinator = PoolsideCoordinator(hass, config_entry, LoadClient(failure))  # type: ignore[arg-type]
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert "poolside_refresh outcome=failed" in caplog.text
+    assert "status=502" in caplog.text
+    assert "content_type=text/html" in caplog.text
+    await coordinator.async_shutdown()
+
+
 async def test_heartbeat_success_and_retryable_failure(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
