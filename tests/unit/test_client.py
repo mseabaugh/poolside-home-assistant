@@ -91,7 +91,7 @@ async def test_safe_control_and_theme_writes(
     assert record["ControlUUID"] == "light-one"
     assert record["Brightness"] == 50
     assert record["LightName"] == "Blue"
-    assert params["siteId"] == "site-alpha"
+    assert params["SiteUUID"] == "site-alpha"
     assert isinstance(params["BatchUUID"], str)
 
     assert await client.async_activate_theme(site, "theme-calm") == {"accepted": True}
@@ -114,6 +114,7 @@ async def test_write_builds_minimum_record_when_desired_state_is_missing(
     params = transport.calls[-1][1]
     assert params is not None
     assert params["DesiredStates"] == [{"ControlUUID": "filter-one", "Status": "ON"}]
+    assert params["SiteUUID"] == "site-alpha"
 
 
 async def test_push_filtering_and_site_replacement(user_config: dict[str, Any]) -> None:

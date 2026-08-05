@@ -86,8 +86,8 @@ class PoolsideClient:
             "Site.setDesiredState2",
             {
                 "BatchUUID": str(uuid4()),
+                "SiteUUID": site.uuid,
                 "DesiredStates": [desired],
-                "siteId": site.uuid,
             },
         )
 
