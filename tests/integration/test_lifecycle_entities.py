@@ -47,7 +47,7 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     await _setup(hass, config_entry, fake_client, monkeypatch)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, config_entry.entry_id)
-    assert len(entries) == 15
+    assert len(entries) == 16
     assert _entity_id(hass, "light", "light-one")
     assert _entity_id(hass, "light", "light-combined")
     assert _entity_id(hass, "switch", "filter-one")

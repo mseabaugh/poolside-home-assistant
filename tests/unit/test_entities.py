@@ -27,7 +27,7 @@ from custom_components.poolside.models import (
     apply_runtime,
     discover_sites,
 )
-from custom_components.poolside.number import PoolsideControlNumber
+from custom_components.poolside.number import PoolsideControlNumber, PoolsideHeaterTemperature
 from custom_components.poolside.select import PoolsideThemeSelect, _theme_options
 from custom_components.poolside.select import _entities as select_entities
 
@@ -236,3 +236,32 @@ async def test_number_and_theme_failure_paths(
     assert inactive.current_option is None
     coordinator.data = PoolsideData({site.uuid: replace(current, themes={})})
     assert list(select_entities(coordinator)) == []
+
+
+async def test_heater_temperature_entity_reads_and_writes_setpoint(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Heating controls are temperature numbers and preserve SetPoint semantics."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    heater = PoolsideHeaterTemperature(coordinator, "site-alpha", "heat-one")
+    assert heater.native_value == 82
+    await heater.async_set_native_value(85)
+    assert coordinator.control_writes[-1] == ("site-alpha", "heat-one", {"SetPoint": 85})
+    with pytest.raises(ValueError, match="between"):
+        await heater.async_set_native_value(111)
+    current = coordinator.site("site-alpha")
+    control = current.controls["heat-one"]
+    coordinator.data = PoolsideData(
+        {current.uuid: replace(current, controls={**current.controls, "heat-one": replace(control, desired={"SetPoint": "bad"})})}
+    )
+    assert heater.native_value is None
+    coordinator.data = PoolsideData(
+        {
+            current.uuid: replace(
+                current, controls={**current.controls, "heat-one": replace(control, desired={})}
+            )
+        }
+    )
+    assert heater.native_value is None
