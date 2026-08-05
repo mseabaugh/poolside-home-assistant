@@ -3,6 +3,8 @@
 The supplied evidence confirms cloud JSON-RPC endpoints and the following operations:
 
 - Reads: `User.getConfig`, `Site.getStates`, `Site.getDesiredState`, `ping`.
+- `ping` is also used as the authenticated session heartbeat; it does not return a replacement
+  token, so an expired or rejected token correctly enters Home Assistant reauthentication.
 - Writes: `Site.setDesiredState2`, `Site.setTheme` with `Status=ON`.
 - Pushes: `Connection.activate`, `Site.setStates`, `Site.setDesiredState`,
   `Device.setConfig`, and `Site.updateAlerts`.

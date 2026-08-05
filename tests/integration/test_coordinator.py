@@ -34,6 +34,10 @@ class LoadClient:
             raise self.result
         return self.result
 
+    async def async_ping(self) -> bool:
+        """Return a healthy heartbeat for coordinator lifecycle tests."""
+        return True
+
 
 class PushClient(LoadClient):
     """Scripted push client that exercises normal, reconnect, and auth paths."""
@@ -52,6 +56,21 @@ class PushClient(LoadClient):
         if self.calls == 2:
             raise CannotConnectError("synthetic")
         raise AuthenticationError("synthetic")
+
+
+class HeartbeatClient(LoadClient):
+    """Scripted heartbeat client for success, retry, and authentication paths."""
+
+    def __init__(self, heartbeat_error: Exception | None = None) -> None:
+        super().__init__(PoolsideData())
+        self.heartbeat_error = heartbeat_error
+        self.heartbeat_calls = 0
+
+    async def async_ping(self) -> bool:
+        self.heartbeat_calls += 1
+        if self.heartbeat_error is not None:
+            raise self.heartbeat_error
+        return True
 
 
 @pytest.mark.parametrize(
@@ -73,6 +92,65 @@ async def test_update_translates_domain_failures(
     with pytest.raises(expected):
         await coordinator._async_update_data()
     await coordinator.async_shutdown()
+
+
+async def test_heartbeat_success_and_retryable_failure(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Heartbeats call ping and keep retryable failures out of reauthentication."""
+
+    async def stop_after_wait(
+        awaitable: Coroutine[Any, Any, Any],
+        *,
+        timeout: float,  # noqa: ASYNC109
+    ) -> None:
+        del timeout
+        awaitable.close()
+        coordinator._stopping.set()
+        raise TimeoutError
+
+    monkeypatch.setattr("custom_components.poolside.coordinator.asyncio.wait_for", stop_after_wait)
+    client = HeartbeatClient()
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    await coordinator._async_heartbeat_loop()
+    assert client.heartbeat_calls == 1
+
+    client = HeartbeatClient(CannotConnectError("synthetic"))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    await coordinator._async_heartbeat_loop()
+    assert client.heartbeat_calls == 1
+
+    client = HeartbeatClient(ProtocolError("synthetic"))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    await coordinator._async_heartbeat_loop()
+    assert client.heartbeat_calls == 1
+
+    client = HeartbeatClient()
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+
+    async def stop_after_ping() -> bool:
+        coordinator._stopping.set()
+        return True
+
+    client.async_ping = stop_after_ping  # type: ignore[method-assign]
+    await coordinator._async_heartbeat_loop()
+    assert client.heartbeat_calls == 0
+
+
+async def test_heartbeat_authentication_failure_starts_reauth(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+) -> None:
+    """An expired heartbeat token starts HA reauthentication and stops the loop."""
+    client = HeartbeatClient(AuthenticationError("expired"))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    reauth = Mock()
+    config_entry.async_start_reauth = reauth
+    await coordinator._async_heartbeat_loop()
+    assert client.heartbeat_calls == 1
+    reauth.assert_called_once_with(hass)
 
 
 async def test_push_reconnect_refresh_ignore_reauth_and_idempotent_start(
@@ -103,10 +181,13 @@ async def test_push_reconnect_refresh_ignore_reauth_and_idempotent_start(
     reauth.assert_called_once_with(hass)
     assert client.calls == 3
 
+    coordinator._stopping.set()
     coordinator.start_push()
     task = coordinator._push_task
+    heartbeat_task = coordinator._heartbeat_task
     coordinator.start_push()
     assert coordinator._push_task is task
+    assert coordinator._heartbeat_task is heartbeat_task
     await coordinator.async_shutdown()
     await coordinator.async_shutdown()
 
