@@ -102,9 +102,8 @@ async def test_stale_refresh_keeps_successful_local_control_write(
 ) -> None:
     """A stale cloud response does not make a just-written control visibly bounce."""
     site = apply_runtime(discover_sites(user_config).sites["site-alpha"], {}, desired_payload)
-    coordinator = PoolsideCoordinator(
-        hass, config_entry, LoadClient(PoolsideData({site.uuid: site}))
-    )  # type: ignore[arg-type]
+    client: Any = LoadClient(PoolsideData({site.uuid: site}))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)
     coordinator._pending_controls[(site.uuid, "light-one")] = {"Status": "OFF"}
     data = coordinator._apply_pending_controls(PoolsideData({site.uuid: site}))
     assert data.sites[site.uuid].controls["light-one"].desired["Status"] == "OFF"
