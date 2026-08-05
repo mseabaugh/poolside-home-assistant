@@ -56,6 +56,7 @@ async def test_read_validation_and_multi_site_load(
     assert await client.async_get_states("site-alpha") == states_payload
     assert await client.async_get_desired_state("site-alpha") == desired_payload
     assert await client.async_get_config() == config
+    assert ("User.getConfig", {}) in transport.calls
 
 
 async def test_validation_rejects_false_ping_and_empty_account() -> None:

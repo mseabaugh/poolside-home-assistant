@@ -111,7 +111,7 @@ class FakePoolsideService:
         if not isinstance(params, dict):
             params = {}
         if (
-            params.get("username") != SYNTHETIC_USERNAME
+            params.get("email") != SYNTHETIC_USERNAME
             or params.get("password") != SYNTHETIC_PASSWORD
         ):
             return web.json_response(

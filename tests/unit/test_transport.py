@@ -185,7 +185,7 @@ async def test_login_exchanges_credentials_without_bearer_header(
     assert "Authorization" not in call["headers"]
     assert call["json"]["method"] == "User.login"
     assert call["json"]["params"] == {
-        "username": "synthetic-user",
+        "email": "synthetic-user",
         "password": "synthetic-password",
     }
     assert "synthetic-password" not in caplog.text
@@ -217,7 +217,7 @@ async def test_login_rejects_empty_credentials(credentials: tuple[str, str]) -> 
 @pytest.mark.parametrize("status", [401, 403])
 async def test_login_http_authentication_failures(status: int) -> None:
     """HTTP authentication failures map to the reauthentication contract."""
-    with pytest.raises(AuthenticationError, match="username or password"):
+    with pytest.raises(AuthenticationError, match="email or password"):
         await _login(FakeSession(FakeResponse(status, {})))
 
 
@@ -241,7 +241,7 @@ async def test_login_connection_and_protocol_failures(
     malformed = json.JSONDecodeError("synthetic", "x", 0)
     with pytest.raises(ProtocolError, match="malformed login JSON"):
         await _login(FakeSession(FakeResponse(200, malformed)))
-    with pytest.raises(AuthenticationError, match="username or password"):
+    with pytest.raises(AuthenticationError, match="email or password"):
         await _login(FakeSession(FakeResponse(200, {"error": {"code": 403}})))
     with pytest.raises(RemoteError, match="login error"):
         await _login(FakeSession(FakeResponse(200, {"error": {"code": -1}})))

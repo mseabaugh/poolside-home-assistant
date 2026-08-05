@@ -5,7 +5,7 @@ const password = "Synthetic-Test-Password-2026!";
 async function completeOnboarding(page: Page): Promise<void> {
   await page.goto("/");
   const createHome = page.getByRole("button", { name: /create my smart home/i });
-  const login = page.getByRole("textbox", { name: /^username/i });
+  const login = page.getByRole("textbox", { name: /^(email|username)/i });
   await expect(createHome.or(login)).toBeVisible({ timeout: 60_000 });
 
   if (!(await createHome.isVisible().catch(() => false))) {
@@ -20,7 +20,7 @@ async function completeOnboarding(page: Page): Promise<void> {
 
   await createHome.click();
   await page.getByRole("textbox", { name: /^name/i }).fill("Synthetic Owner");
-  await page.getByRole("textbox", { name: /^username/i }).fill("synthetic-owner");
+    await page.getByRole("textbox", { name: /^(email|username)/i }).fill("synthetic-owner");
   await page.getByRole("textbox", { name: /^password/i }).fill(password);
   await page.getByRole("textbox", { name: /^confirm password/i }).fill(password);
   await page.getByRole("button", { name: /create account/i }).click();
@@ -58,7 +58,7 @@ test("user adds Poolside and a UI switch round-trips through the application", a
   const poolsideBrand = page.getByText("Poolside", { exact: true }).last();
   await expect(poolsideBrand).toBeVisible({ timeout: 60_000 });
   await poolsideBrand.click();
-  await page.getByRole("textbox", { name: /^username/i }).fill("synthetic-owner");
+  await page.getByRole("textbox", { name: /^(email|username)/i }).fill("synthetic-owner");
   await page.getByRole("textbox", { name: /^password/i }).fill(password);
   await page.getByRole("button", { name: /submit/i }).click();
   await expect(page.getByText("The Attendant", { exact: true })).toBeVisible({

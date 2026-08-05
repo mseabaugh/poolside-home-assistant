@@ -47,7 +47,7 @@ the handoff did not prove a LAN wire protocol.
 - HTTP or WebSocket authentication failures start Home Assistant reauthentication.
 - An authenticated `ping` heartbeat runs every four minutes, before the five-minute
   reconciliation interval, so sliding Poolside sessions are kept active without storing the
-  username or password. A rejected heartbeat stops the listener and starts reauthentication.
+  email or password. A rejected heartbeat stops the listener and starts reauthentication.
 - Connectivity and protocol failures mark entities unavailable while periodic reconciliation and
   bounded reconnect behavior continue.
 - Diagnostics recursively redact credentials, identity, location, and network metadata.

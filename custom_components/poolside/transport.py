@@ -227,7 +227,7 @@ async def async_login(
 ) -> str:
     """Exchange Poolside credentials for a bearer token through ``User.login``."""
     if not username.strip() or not password:
-        raise ValueError("Username and password must not be empty")
+        raise ValueError("Email and password must not be empty")
 
     resolved_endpoints = endpoints or Endpoints()
     trace_id = str(uuid4())
@@ -236,7 +236,7 @@ async def async_login(
         "id": str(uuid4()),
         "jsonrpc": "2.0",
         "method": _LOGIN_METHOD,
-        "params": {"username": username.strip(), "password": password},
+        "params": {"email": username.strip(), "password": password},
         "traceId": trace_id,
     }
     started = monotonic()
@@ -262,7 +262,7 @@ async def _async_login_request(
             timeout=aiohttp.ClientTimeout(total=30),
         ) as response:
             if response.status in _AUTH_FAILURES:
-                raise AuthenticationError("Poolside rejected the username or password")
+                raise AuthenticationError("Poolside rejected the email or password")
             if response.status >= _HTTP_ERROR_STATUS:
                 raise CannotConnectError(
                     "Poolside returned an HTTP failure during login",
@@ -295,7 +295,7 @@ def _parse_login_response(payload: Any, started: float, correlation_id: str) -> 
         code = error.get("code") if isinstance(error, Mapping) else None
         if code in _AUTH_FAILURES:
             _log_completion(_LOGIN_METHOD, started, "authentication_error", correlation_id)
-            raise AuthenticationError("Poolside rejected the username or password")
+            raise AuthenticationError("Poolside rejected the email or password")
         _log_completion(_LOGIN_METHOD, started, "remote_error", correlation_id)
         raise RemoteError("Poolside returned a login error")
     if "result" not in mapping:

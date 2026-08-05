@@ -32,7 +32,7 @@ class PoolsideClient:
 
     async def async_get_config(self) -> Any:
         """Fetch the complete account configuration."""
-        return await self._transport.async_rpc("User.getConfig")
+        return await self._transport.async_rpc("User.getConfig", {})
 
     async def async_get_states(self, site_uuid: str) -> Any:
         """Fetch current string-serialized equipment state."""
