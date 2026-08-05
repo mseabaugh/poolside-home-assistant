@@ -18,7 +18,7 @@ from custom_components.poolside.exceptions import (
     CannotConnectError,
     ProtocolError,
 )
-from custom_components.poolside.models import PoolsideData
+from custom_components.poolside.models import PoolsideData, apply_runtime, discover_sites
 
 pytestmark = pytest.mark.integration
 
@@ -101,8 +101,6 @@ async def test_stale_refresh_keeps_successful_local_control_write(
     desired_payload: dict[str, Any],
 ) -> None:
     """A stale cloud response does not make a just-written control visibly bounce."""
-    from custom_components.poolside.models import apply_runtime, discover_sites
-
     site = apply_runtime(discover_sites(user_config).sites["site-alpha"], {}, desired_payload)
     coordinator = PoolsideCoordinator(
         hass, config_entry, LoadClient(PoolsideData({site.uuid: site}))
