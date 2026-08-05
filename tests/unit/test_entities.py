@@ -254,7 +254,15 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
     current = coordinator.site("site-alpha")
     control = current.controls["heat-one"]
     coordinator.data = PoolsideData(
-        {current.uuid: replace(current, controls={**current.controls, "heat-one": replace(control, desired={"SetPoint": "bad"})})}
+        {
+            current.uuid: replace(
+                current,
+                controls={
+                    **current.controls,
+                    "heat-one": replace(control, desired={"SetPoint": "bad"}),
+                },
+            )
+        }
     )
     assert heater.native_value is None
     coordinator.data = PoolsideData(
