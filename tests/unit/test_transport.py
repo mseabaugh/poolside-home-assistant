@@ -230,6 +230,7 @@ async def test_login_connection_and_protocol_failures(
     ):
         await _login(FakeSession(FakeResponse(500, {})))
     assert "outcome=connection_error" in caplog.text
+    assert "error_type=CannotConnectError" in caplog.text
     assert any(record.levelno == logging.WARNING for record in caplog.records)
     with pytest.raises(CannotConnectError, match="login request failed"):
         await _login(FakeSession(aiohttp.ClientError("synthetic")))

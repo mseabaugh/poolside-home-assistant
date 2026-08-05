@@ -26,17 +26,22 @@ _TOKEN_FIELDS: Final = ("accessToken", "access_token", "token", "Token")
 _VISIBLE_FAILURES: Final = frozenset({"authentication_error", "connection_error"})
 
 
-def _log_completion(method: str, started: float, outcome: str, correlation_id: str) -> None:
+def _log_completion(
+    method: str,
+    started: float,
+    outcome: str,
+    correlation_id: str,
+    error_type: str | None = None,
+) -> None:
     """Log only operation metadata that is safe for central collection."""
     duration_ms = round((monotonic() - started) * 1000)
     log_method = _LOGGER.warning if outcome in _VISIBLE_FAILURES else _LOGGER.debug
-    log_method(
-        "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s",
-        correlation_id,
-        method,
-        outcome,
-        duration_ms,
-    )
+    message = "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s"
+    args: tuple[object, ...] = (correlation_id, method, outcome, duration_ms)
+    if error_type is not None:
+        message += " error_type=%s"
+        args += (error_type,)
+    log_method(message, *args)
 
 
 def _log_known_error(
@@ -52,7 +57,7 @@ def _log_known_error(
         outcome = "connection_error"
     else:
         outcome = "protocol_error"
-    _log_completion(method, started, outcome, correlation_id)
+    _log_completion(method, started, outcome, correlation_id, type(error).__name__)
     raise error
 
 
@@ -149,7 +154,7 @@ class CloudTransport:
         except (AuthenticationError, CannotConnectError, ProtocolError) as err:
             _log_known_error(method, started, correlation_id, err)
         except (TimeoutError, aiohttp.ClientError) as err:
-            _log_completion(method, started, "connection_error", correlation_id)
+            _log_completion(method, started, "connection_error", correlation_id, type(err).__name__)
             raise CannotConnectError("Poolside request failed") from err
 
         mapping = require_mapping(payload, "JSON-RPC response")
@@ -251,7 +256,9 @@ async def _async_login_request(
     except (AuthenticationError, CannotConnectError, ProtocolError) as err:
         _log_known_error(_LOGIN_METHOD, started, correlation_id, err)
     except (TimeoutError, aiohttp.ClientError) as err:
-        _log_completion(_LOGIN_METHOD, started, "connection_error", correlation_id)
+        _log_completion(
+            _LOGIN_METHOD, started, "connection_error", correlation_id, type(err).__name__
+        )
         raise CannotConnectError("Poolside login request failed") from err
     return payload
 

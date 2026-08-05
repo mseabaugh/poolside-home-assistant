@@ -34,6 +34,9 @@ logger:
     custom_components.poolside: debug
 ```
 
+Connection failures include an `error_type` such as `ClientConnectorError`, `ClientConnectorDNSError`,
+or `TimeoutError`; this identifies the network failure class without logging the endpoint or credentials.
+
 Do not set `POOLSIDE_TEST_MODE=1` in a real deployment. That flag exists solely so isolated tests
 can substitute synthetic endpoints. Direct controller LAN transport is not implemented because
 the handoff did not prove a LAN wire protocol.
