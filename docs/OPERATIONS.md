@@ -22,6 +22,18 @@ Assistant, then add **Poolside** under **Settings → Devices & services**. The 
 runs locally, while its currently verified transport reaches Poolside's cloud over HTTPS and
 WebSocket.
 
+Poolside authentication and connection failures are emitted at Home Assistant's warning level
+with safe correlation metadata, so they appear in **Settings → System → Logs** without extra
+configuration. For successful RPCs and protocol diagnostics, enable the integration's debug
+logger in `configuration.yaml` and restart Home Assistant:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.poolside: debug
+```
+
 Do not set `POOLSIDE_TEST_MODE=1` in a real deployment. That flag exists solely so isolated tests
 can substitute synthetic endpoints. Direct controller LAN transport is not implemented because
 the handoff did not prove a LAN wire protocol.

@@ -52,9 +52,14 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 token = await async_login(self, username, password)
                 account_id = await async_validate_token(self, token)
-            except AuthenticationError, ValueError:
+            except AuthenticationError:
+                _LOGGER.warning("Poolside configuration authentication failed")
+                errors["base"] = "invalid_auth"
+            except ValueError:
+                _LOGGER.warning("Poolside configuration input was invalid")
                 errors["base"] = "invalid_auth"
             except CannotConnectError:
+                _LOGGER.warning("Poolside configuration connection failed")
                 errors["base"] = "cannot_connect"
             except PoolsideError:
                 _LOGGER.exception("Poolside configuration validation failed")
@@ -83,9 +88,14 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 token = await async_login(self, username, password)
                 await async_validate_token(self, token)
-            except AuthenticationError, ValueError:
+            except AuthenticationError:
+                _LOGGER.warning("Poolside reauthentication authentication failed")
+                errors["base"] = "invalid_auth"
+            except ValueError:
+                _LOGGER.warning("Poolside reauthentication input was invalid")
                 errors["base"] = "invalid_auth"
             except CannotConnectError:
+                _LOGGER.warning("Poolside reauthentication connection failed")
                 errors["base"] = "cannot_connect"
             except PoolsideError:
                 _LOGGER.exception("Poolside reauthentication validation failed")

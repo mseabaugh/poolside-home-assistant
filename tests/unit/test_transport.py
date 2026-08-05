@@ -220,10 +220,17 @@ async def test_login_http_authentication_failures(status: int) -> None:
         await _login(FakeSession(FakeResponse(status, {})))
 
 
-async def test_login_connection_and_protocol_failures() -> None:
+async def test_login_connection_and_protocol_failures(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Login distinguishes transport, malformed, remote, and incomplete responses."""
-    with pytest.raises(CannotConnectError, match="HTTP failure"):
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.poolside.transport"),
+        pytest.raises(CannotConnectError, match="HTTP failure"),
+    ):
         await _login(FakeSession(FakeResponse(500, {})))
+    assert "outcome=connection_error" in caplog.text
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
     with pytest.raises(CannotConnectError, match="login request failed"):
         await _login(FakeSession(aiohttp.ClientError("synthetic")))
     with pytest.raises(CannotConnectError, match="login request failed"):

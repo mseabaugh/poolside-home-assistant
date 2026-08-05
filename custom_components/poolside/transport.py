@@ -8,7 +8,7 @@ import os
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from time import monotonic
-from typing import Any, Final, Protocol
+from typing import Any, Final, NoReturn, Protocol
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -23,18 +23,37 @@ _HTTP_ERROR_STATUS = 400
 _AUTH_FAILURES: Final = frozenset({401, 403})
 _LOGIN_METHOD: Final = "User.login"
 _TOKEN_FIELDS: Final = ("accessToken", "access_token", "token", "Token")
+_VISIBLE_FAILURES: Final = frozenset({"authentication_error", "connection_error"})
 
 
 def _log_completion(method: str, started: float, outcome: str, correlation_id: str) -> None:
     """Log only operation metadata that is safe for central collection."""
     duration_ms = round((monotonic() - started) * 1000)
-    _LOGGER.debug(
+    log_method = _LOGGER.warning if outcome in _VISIBLE_FAILURES else _LOGGER.debug
+    log_method(
         "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s",
         correlation_id,
         method,
         outcome,
         duration_ms,
     )
+
+
+def _log_known_error(
+    method: str,
+    started: float,
+    correlation_id: str,
+    error: AuthenticationError | CannotConnectError | ProtocolError,
+) -> NoReturn:
+    """Log a safe outcome for a typed transport failure and preserve its exception."""
+    if isinstance(error, AuthenticationError):
+        outcome = "authentication_error"
+    elif isinstance(error, CannotConnectError):
+        outcome = "connection_error"
+    else:
+        outcome = "protocol_error"
+    _log_completion(method, started, outcome, correlation_id)
+    raise error
 
 
 class Transport(Protocol):
@@ -127,9 +146,8 @@ class CloudTransport:
                     payload = await response.json(content_type=None)
                 except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
                     raise ProtocolError("Poolside returned malformed JSON") from err
-        except AuthenticationError:
-            _log_completion(method, started, "authentication_error", correlation_id)
-            raise
+        except (AuthenticationError, CannotConnectError, ProtocolError) as err:
+            _log_known_error(method, started, correlation_id, err)
         except (TimeoutError, aiohttp.ClientError) as err:
             _log_completion(method, started, "connection_error", correlation_id)
             raise CannotConnectError("Poolside request failed") from err
@@ -230,9 +248,8 @@ async def _async_login_request(
                 payload = await response.json(content_type=None)
             except (aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
                 raise ProtocolError("Poolside returned malformed login JSON") from err
-    except AuthenticationError:
-        _log_completion(_LOGIN_METHOD, started, "authentication_error", correlation_id)
-        raise
+    except (AuthenticationError, CannotConnectError, ProtocolError) as err:
+        _log_known_error(_LOGIN_METHOD, started, correlation_id, err)
     except (TimeoutError, aiohttp.ClientError) as err:
         _log_completion(_LOGIN_METHOD, started, "connection_error", correlation_id)
         raise CannotConnectError("Poolside login request failed") from err

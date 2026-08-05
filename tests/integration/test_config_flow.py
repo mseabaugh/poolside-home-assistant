@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
@@ -91,6 +92,7 @@ async def test_user_flow_creates_unique_entry(
     ("failure", "expected"),
     [
         (AuthenticationError("synthetic"), "invalid_auth"),
+        (ValueError("synthetic"), "invalid_auth"),
         (CannotConnectError("synthetic"), "cannot_connect"),
         (ProtocolError("synthetic"), "unknown"),
     ],
@@ -100,8 +102,10 @@ async def test_user_flow_surfaces_common_failures(
     monkeypatch: pytest.MonkeyPatch,
     failure: Exception,
     expected: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Expected auth, connectivity, and protocol failures remain user-actionable."""
+    caplog.set_level(logging.WARNING, logger="custom_components.poolside.config_flow")
     monkeypatch.setattr(
         "custom_components.poolside.config_flow.async_login",
         AsyncMock(return_value="synthetic-token"),
@@ -117,6 +121,12 @@ async def test_user_flow_surfaces_common_failures(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": expected}
+    if expected == "cannot_connect":
+        assert "Poolside configuration connection failed" in caplog.text
+    if isinstance(failure, AuthenticationError):
+        assert "Poolside configuration authentication failed" in caplog.text
+    if isinstance(failure, ValueError):
+        assert "Poolside configuration input was invalid" in caplog.text
 
 
 async def test_user_flow_surfaces_login_failure(
@@ -194,6 +204,7 @@ async def test_reauthentication_success_and_failures(
 
     for failure, expected in (
         (AuthenticationError("synthetic"), "invalid_auth"),
+        (ValueError("synthetic"), "invalid_auth"),
         (CannotConnectError("synthetic"), "cannot_connect"),
         (ProtocolError("synthetic"), "unknown"),
     ):
