@@ -36,13 +36,25 @@ until their exact protocols and concurrency behavior are confirmed.
 ### Optional body selector card
 
 The repository includes a Lovelace card at
-`custom_components/poolside/www/poolside-body-selector.js`. Copy it to
-`config/www/poolside-body-selector.js`, then add it as a dashboard resource with:
+`custom_components/poolside/www/poolside-body-selector.js`. The simplest installation does
+not require filesystem access: open **Settings → Dashboards → ⋮ → Resources → Add resource**
+and use the raw GitHub URL below, with resource type **JavaScript module**:
+
+```text
+https://raw.githubusercontent.com/mseabaugh/poolside-home-assistant/main/custom_components/poolside/www/poolside-body-selector.js
+```
+
+If your HA installation exposes its config directory (for example through the File editor or
+Terminal add-on), you can instead copy the file to `config/www/poolside-body-selector.js` and
+add this local resource:
 
 ```yaml
 url: /local/poolside-body-selector.js
 type: module
 ```
+
+After adding or changing a resource, reload the browser with **Ctrl/Cmd+Shift+R**. The card is
+then added from the dashboard editor as **Custom: Poolside Body Selector**.
 
 Configure the card with the Poolside body selector entity. It renders a discrete
 multi-state slider and asks for confirmation before changing from one active body
