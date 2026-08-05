@@ -21,6 +21,34 @@ class ObjectKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class BodyOfWater:
+    """A discovered body of water and explicit service relationships."""
+
+    uuid: str
+    name: str
+    type: str
+    site_uuid: str
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def connected_body_uuids(self) -> tuple[str, ...]:
+        """Return bodies explicitly connected by Poolside's Spillover graph."""
+        spillover = self.raw.get("Spillover")
+        if not isinstance(spillover, Mapping):
+            return ()
+        things = spillover.get("ConnectedThings")
+        if not isinstance(things, list):
+            return ()
+        result: list[str] = []
+        for thing in things:
+            if isinstance(thing, Mapping):
+                value = thing.get("UUID")
+                if isinstance(value, str) and value and value not in result:
+                    result.append(value)
+        return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
 class Control:
     """A writable high-level Poolside Control."""
 
@@ -117,6 +145,57 @@ class Equipment:
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
+def _find_body_root(parent: dict[str, str], value: str) -> str:
+    """Find one body component root with path compression."""
+    while parent[value] != value:
+        parent[value] = parent[parent[value]]
+        value = parent[value]
+    return value
+
+
+def _union_body_roots(parent: dict[str, str], left: str, right: str) -> None:
+    """Join two known body components."""
+    if left not in parent or right not in parent:
+        return
+    left_root = _find_body_root(parent, left)
+    right_root = _find_body_root(parent, right)
+    if left_root != right_root:
+        parent[right_root] = left_root
+
+
+def _body_connection_groups(
+    bodies: Mapping[str, BodyOfWater],
+    controls: Mapping[str, Control],
+    combined_controls: Mapping[str, Control],
+) -> tuple[frozenset[str], ...]:
+    """Build explicit connected components without inferring from telemetry."""
+    parent = {uuid: uuid for uuid in bodies}
+
+    for body in bodies.values():
+        for connected in body.connected_body_uuids:
+            _union_body_roots(parent, body.uuid, connected)
+
+    for combined in combined_controls.values():
+        members = combined.raw.get("Controls", [])
+        member_bodies: set[str] = set()
+        for member in members:
+            if not isinstance(member, Mapping):
+                continue
+            control_uuid = member.get("ControlUUID")
+            if not isinstance(control_uuid, str) or control_uuid not in controls:
+                continue
+            body_uuid = controls[control_uuid].water_body_uuid
+            if body_uuid in parent:
+                member_bodies.add(body_uuid)
+        for body_uuid in tuple(member_bodies)[1:]:
+            _union_body_roots(parent, next(iter(member_bodies)), body_uuid)
+
+    groups: dict[str, set[str]] = {}
+    for uuid in parent:
+        groups.setdefault(_find_body_root(parent, uuid), set()).add(uuid)
+    return tuple(frozenset(group) for group in groups.values())
+
+
 @dataclass(frozen=True, slots=True)
 class Site:
     """A complete discovered site snapshot."""
@@ -124,6 +203,7 @@ class Site:
     uuid: str
     name: str
     controls: Mapping[str, Control] = field(default_factory=dict)
+    bodies_of_water: Mapping[str, BodyOfWater] = field(default_factory=dict)
     combined_controls: Mapping[str, Control] = field(default_factory=dict)
     themes: Mapping[str, Theme] = field(default_factory=dict)
     equipment: Mapping[str, Equipment] = field(default_factory=dict)
@@ -152,6 +232,13 @@ class Site:
             key = control.water_body_uuid or control.uuid
             result.setdefault(key, control)
         return result
+
+    @property
+    def body_connection_groups(self) -> tuple[frozenset[str], ...]:
+        """Return explicit XOR groups, keeping unrelated bodies separate."""
+        return _body_connection_groups(
+            self.bodies_of_water, self.all_controls, self.combined_controls
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +403,16 @@ def discover_sites(payload: Any) -> PoolsideData:
             )
             for raw in _mapping_list(site_raw, "Controls", "controls")
         ]
+        bodies = [
+            BodyOfWater(
+                uuid=_required_identifier(raw, "body of water"),
+                name=_display_name(raw, "Body of water"),
+                type=_type_name(raw, "BodyOfWater"),
+                site_uuid=site_uuid,
+                raw=dict(raw),
+            )
+            for raw in _mapping_list(site_raw, "BodiesOfWater", "bodiesOfWater")
+        ]
         combined = [
             Control(
                 uuid=_required_identifier(raw, "Combined Control"),
@@ -358,6 +455,7 @@ def discover_sites(payload: Any) -> PoolsideData:
                 uuid=site_uuid,
                 name=site_name,
                 controls=_index_unique(controls, lambda item: item.uuid, "Controls"),
+                bodies_of_water=_index_unique(bodies, lambda item: item.uuid, "BodiesOfWater"),
                 combined_controls=_index_unique(
                     combined, lambda item: item.uuid, "Combined Controls"
                 ),

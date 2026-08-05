@@ -33,6 +33,26 @@ until their exact protocols and concurrency behavior are confirmed.
 5. Open **Settings → Devices & services → Add integration → Poolside**.
 6. Enter your Poolside email and password.
 
+### Optional body selector card
+
+The repository includes a Lovelace card at
+`custom_components/poolside/www/poolside-body-selector.js`. Copy it to
+`config/www/poolside-body-selector.js`, then add it as a dashboard resource with:
+
+```yaml
+url: /local/poolside-body-selector.js
+type: module
+```
+
+Configure the card with the Poolside body selector entity. It renders a discrete
+multi-state slider and asks for confirmation before changing from one active body
+to another. The card is presentation-only; the integration remains responsible for
+validating the authoritative state.
+
+Poolside body relationships are grouped only when the service explicitly reports
+them through `Spillover.ConnectedThings` or a cross-body `CombinedControl`. Bodies
+without those signals remain independent and do not share an XOR selector.
+
 The returned bearer token is stored in the Home Assistant config entry; the username and password
 are never stored, included in diagnostics, or written to logs.
 

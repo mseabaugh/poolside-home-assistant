@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -55,6 +56,41 @@ def test_discovery_and_runtime_merge(
     assert not merged.controls["jets-restricted"].available
     assert merged.controls["jets-restricted"].disabled_reasons == ("synthetic-reason",)
     assert not merged.controls["heat-one"].is_light
+
+
+def test_body_relationships_only_join_explicitly_connected_bodies(
+    user_config: dict[str, object],
+) -> None:
+    """Spillover and cross-body Combined Controls define XOR; unrelated bodies do not."""
+    payload = deepcopy(user_config)
+    site = cast("dict[str, object]", cast("list[object]", payload["Sites"])[0])
+    site["BodiesOfWater"] = [
+        {"UUID": "pool", "Name": "Pool", "Type": "Pool"},
+        {
+            "UUID": "spa",
+            "Name": "Spa",
+            "Type": "Spa",
+            "Spillover": {"ConnectedThings": [{"UUID": "pool"}]},
+        },
+        {"UUID": "pond", "Name": "Pond", "Type": "Pond"},
+    ]
+    site["Controls"] = [
+        {"UUID": "pool-light", "Name": "Pool Light", "Type": "Light", "BodyOfWater": "pool"},
+        {"UUID": "spa-light", "Name": "Spa Light", "Type": "Light", "BodyOfWater": "spa"},
+        {"UUID": "pond-light", "Name": "Pond Light", "Type": "Light", "BodyOfWater": "pond"},
+    ]
+    site["CombinedControls"] = [
+        {
+            "UUID": "pool-spa-combined",
+            "Name": "Pool and Spa",
+            "Type": "Combined",
+            "Controls": [{"ControlUUID": "pool-light"}, {"ControlUUID": "spa-light"}],
+        }
+    ]
+    discovered = discover_sites(payload).sites["site-alpha"]
+    groups = {frozenset(group) for group in discovered.body_connection_groups}
+    assert frozenset({"pool", "spa"}) in groups
+    assert frozenset({"pond"}) in groups
 
 
 def test_discovery_accepts_mapping_collections_and_root_site(
