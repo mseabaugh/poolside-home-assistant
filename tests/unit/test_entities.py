@@ -264,8 +264,8 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
             )
         }
     )
-    assert heater.native_value is None
     dynamic_heater: Any = heater
+    assert dynamic_heater.native_value is None
     coordinator.data = PoolsideData(
         {
             current.uuid: replace(
