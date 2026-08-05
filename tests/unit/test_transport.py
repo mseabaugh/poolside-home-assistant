@@ -32,9 +32,10 @@ pytestmark = pytest.mark.unit
 class FakeResponse:
     """Async response context with configurable JSON behavior."""
 
-    def __init__(self, status: int, payload: Any) -> None:
+    def __init__(self, status: int, payload: Any, content_type: str = "application/json") -> None:
         self.status = status
         self.payload = payload
+        self.content_type = content_type
 
     async def __aenter__(self) -> FakeResponse:
         return self
@@ -231,6 +232,7 @@ async def test_login_connection_and_protocol_failures(
         await _login(FakeSession(FakeResponse(500, {})))
     assert "outcome=connection_error" in caplog.text
     assert "error_type=HTTP_500" in caplog.text
+    assert "content_type=application/json" in caplog.text
     assert any(record.levelno == logging.WARNING for record in caplog.records)
     with pytest.raises(CannotConnectError, match="login request failed"):
         await _login(FakeSession(aiohttp.ClientError("synthetic")))
@@ -290,6 +292,7 @@ async def test_rpc_http_connection_and_timeout_failures(
     ):
         await _transport(FakeSession(FakeResponse(500, {}))).async_rpc("ping")
     assert "error_type=HTTP_500" in caplog.text
+    assert "content_type=application/json" in caplog.text
     with pytest.raises(CannotConnectError, match="request failed"):
         await _transport(FakeSession(aiohttp.ClientError("synthetic"))).async_rpc("ping")
     with pytest.raises(CannotConnectError, match="request failed"):

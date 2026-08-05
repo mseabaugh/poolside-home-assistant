@@ -35,8 +35,8 @@ logger:
 ```
 
 Connection failures include an `error_type` such as `HTTP_400`, `HTTP_500`, `ClientConnectorError`,
-`ClientConnectorDNSError`, or `TimeoutError`; this identifies the failure class without logging the
-endpoint, response body, or credentials.
+`ClientConnectorDNSError`, or `TimeoutError`, plus the response `content_type` when available; this
+identifies the failure class without logging the endpoint, response body, or credentials.
 
 Do not set `POOLSIDE_TEST_MODE=1` in a real deployment. That flag exists solely so isolated tests
 can substitute synthetic endpoints. Direct controller LAN transport is not implemented because

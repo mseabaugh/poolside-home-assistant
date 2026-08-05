@@ -31,16 +31,16 @@ def _log_completion(
     started: float,
     outcome: str,
     correlation_id: str,
-    error_type: str | None = None,
+    details: Mapping[str, str] | None = None,
 ) -> None:
     """Log only operation metadata that is safe for central collection."""
     duration_ms = round((monotonic() - started) * 1000)
     log_method = _LOGGER.warning if outcome in _VISIBLE_FAILURES else _LOGGER.debug
     message = "poolside_rpc correlation_id=%s method=%s outcome=%s duration_ms=%s"
     args: tuple[object, ...] = (correlation_id, method, outcome, duration_ms)
-    if error_type is not None:
-        message += " error_type=%s"
-        args += (error_type,)
+    for key, value in (details or {}).items():
+        message += f" {key}=%s"
+        args += (value,)
     log_method(message, *args)
 
 
@@ -60,7 +60,10 @@ def _log_known_error(
     error_type = type(error).__name__
     if isinstance(error, CannotConnectError) and error.status is not None:
         error_type = f"HTTP_{error.status}"
-    _log_completion(method, started, outcome, correlation_id, error_type)
+    details = {"error_type": error_type}
+    if isinstance(error, CannotConnectError) and error.content_type is not None:
+        details["content_type"] = error.content_type
+    _log_completion(method, started, outcome, correlation_id, details)
     raise error
 
 
@@ -150,7 +153,9 @@ class CloudTransport:
                     raise AuthenticationError("Poolside rejected the access token")
                 if response.status >= _HTTP_ERROR_STATUS:
                     raise CannotConnectError(
-                        "Poolside returned an HTTP failure", status=response.status
+                        "Poolside returned an HTTP failure",
+                        status=response.status,
+                        content_type=getattr(response, "content_type", None),
                     )
                 try:
                     payload = await response.json(content_type=None)
@@ -159,7 +164,13 @@ class CloudTransport:
         except (AuthenticationError, CannotConnectError, ProtocolError) as err:
             _log_known_error(method, started, correlation_id, err)
         except (TimeoutError, aiohttp.ClientError) as err:
-            _log_completion(method, started, "connection_error", correlation_id, type(err).__name__)
+            _log_completion(
+                method,
+                started,
+                "connection_error",
+                correlation_id,
+                {"error_type": type(err).__name__},
+            )
             raise CannotConnectError("Poolside request failed") from err
 
         mapping = require_mapping(payload, "JSON-RPC response")
@@ -254,7 +265,9 @@ async def _async_login_request(
                 raise AuthenticationError("Poolside rejected the username or password")
             if response.status >= _HTTP_ERROR_STATUS:
                 raise CannotConnectError(
-                    "Poolside returned an HTTP failure during login", status=response.status
+                    "Poolside returned an HTTP failure during login",
+                    status=response.status,
+                    content_type=getattr(response, "content_type", None),
                 )
             try:
                 payload = await response.json(content_type=None)
@@ -264,7 +277,11 @@ async def _async_login_request(
         _log_known_error(_LOGIN_METHOD, started, correlation_id, err)
     except (TimeoutError, aiohttp.ClientError) as err:
         _log_completion(
-            _LOGIN_METHOD, started, "connection_error", correlation_id, type(err).__name__
+            _LOGIN_METHOD,
+            started,
+            "connection_error",
+            correlation_id,
+            {"error_type": type(err).__name__},
         )
         raise CannotConnectError("Poolside login request failed") from err
     return payload

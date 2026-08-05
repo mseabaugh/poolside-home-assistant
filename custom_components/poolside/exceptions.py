@@ -12,10 +12,17 @@ class AuthenticationError(PoolsideError):
 class CannotConnectError(PoolsideError):
     """The Poolside service could not be reached."""
 
-    def __init__(self, message: str, *, status: int | None = None) -> None:
-        """Keep an optional HTTP status for safe diagnostics without logging response bodies."""
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        content_type: str | None = None,
+    ) -> None:
+        """Keep safe HTTP metadata without logging response bodies."""
         super().__init__(message)
         self.status = status
+        self.content_type = content_type
 
 
 class ProtocolError(PoolsideError):
