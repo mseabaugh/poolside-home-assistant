@@ -41,7 +41,7 @@ not require filesystem access: open **Settings → Dashboards → ⋮ → Resour
 and use the raw GitHub URL below, with resource type **JavaScript module**:
 
 ```text
-https://raw.githubusercontent.com/mseabaugh/poolside-home-assistant/main/custom_components/poolside/www/poolside-body-selector.js
+https://cdn.jsdelivr.net/gh/mseabaugh/poolside-home-assistant@main/custom_components/poolside/www/poolside-body-selector.js
 ```
 
 If your HA installation exposes its config directory (for example through the File editor or
@@ -55,6 +55,14 @@ type: module
 
 After adding or changing a resource, reload the browser with **Ctrl/Cmd+Shift+R**. The card is
 then added from the dashboard editor as **Custom: Poolside Body Selector**.
+
+If it still does not appear in the picker, add a **Manual** card and paste this YAML:
+
+```yaml
+type: custom:poolside-body-selector
+entity: select.poolside_active_body
+name: Active body
+```
 
 Configure the card with the Poolside body selector entity. It renders a discrete
 multi-state slider and asks for confirmation before changing from one active body
