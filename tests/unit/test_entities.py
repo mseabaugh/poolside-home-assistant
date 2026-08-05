@@ -265,6 +265,7 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
         }
     )
     assert heater.native_value is None
+    dynamic_heater: Any = heater
     coordinator.data = PoolsideData(
         {
             current.uuid: replace(
@@ -272,5 +273,5 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
             )
         }
     )
-    if heater.native_value is not None:
+    if dynamic_heater.native_value is not None:
         raise AssertionError("malformed setpoint should be unavailable")
