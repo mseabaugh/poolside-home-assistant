@@ -5,6 +5,14 @@
  * authoritative XOR state and validates every requested option.
  */
 class PoolsideBodySelector extends HTMLElement {
+  static getConfigElement() {
+    return document.createElement("poolside-body-selector");
+  }
+
+  static getStubConfig() {
+    return { entity: "select.poolside_active_body" };
+  }
+
   setConfig(config) {
     if (!config || typeof config.entity !== "string") {
       throw new Error("poolside-body-selector requires an entity");
@@ -181,3 +189,15 @@ class PoolsideBodySelector extends HTMLElement {
 }
 
 customElements.define("poolside-body-selector", PoolsideBodySelector);
+
+// Lovelace discovers custom cards through this registry. Without it the resource
+// can load successfully but the card will not appear in the dashboard picker.
+window.customCards = window.customCards || [];
+if (!window.customCards.some((card) => card.type === "poolside-body-selector")) {
+  window.customCards.push({
+    type: "poolside-body-selector",
+    name: "Poolside Body Selector",
+    description: "Multi-state body-of-water selector with confirmation.",
+    preview: true,
+  });
+}
