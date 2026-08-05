@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -204,6 +205,7 @@ def test_control_classification_uses_discovery_schema_not_runtime_fields(
     assert tuple(site.heating_controls) == ("heat-one",)
     light = site.controls["light-one"]
     assert light.is_light
+    assert replace(light, desired={"DisabledReasons": ["interlock"]}).available
 
 
 def test_safety_policy_authorizes_only_confirmed_targets_and_fields(

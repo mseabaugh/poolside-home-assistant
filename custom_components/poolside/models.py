@@ -48,7 +48,11 @@ class Control:
     @property
     def available(self) -> bool:
         """Return whether the service currently allows this control to appear."""
-        return not self.restricted and not self.disabled_reasons
+        # Poolside reuses DisabledReasons across generic desired-state rows;
+        # light rows can inherit another feature's interlock reason. Keep the
+        # discovered light visible, while authorize_control still fail-closes
+        # any attempted write when the reason is present.
+        return not self.restricted and (self.is_light or not self.disabled_reasons)
 
     @property
     def is_light(self) -> bool:
