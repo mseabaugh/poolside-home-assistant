@@ -40,6 +40,9 @@ async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> bool:
     """Set up Poolside from a UI-created config entry."""
+    # Re-register after config-entry startup so an already-running frontend also
+    # receives the local card resource.
+    add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
     client = create_client(hass, entry.data[CONF_ACCESS_TOKEN])
     coordinator = PoolsideCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
