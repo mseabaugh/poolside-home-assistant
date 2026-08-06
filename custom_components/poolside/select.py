@@ -31,11 +31,59 @@ async def async_setup_entry(
     )
 
 
-def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideThemeSelect]:
-    """Build a selector only for sites that have Themes."""
+def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideEntity]:
+    """Build active-body and Theme selectors from each discovered site."""
     for site in coordinator.data.sites.values():
+        if site.bodies_of_water:
+            yield PoolsideActiveBodySelect(coordinator, site.uuid)
         if site.themes:
             yield PoolsideThemeSelect(coordinator, site.uuid)
+
+
+class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
+    """Select the local body-of-water control scope without making API writes."""
+
+    _attr_name = "Active body"
+
+    def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str) -> None:
+        """Initialize the local selector for one site."""
+        super().__init__(coordinator, site_uuid)
+        self._attr_unique_id = f"{site_uuid}_active_body"
+
+    @property
+    def _options_map(self) -> dict[str, str | None]:
+        """Return stable labels mapped to discovered body identifiers."""
+        site = self.coordinator.site(self.site_uuid)
+        options: dict[str, str | None] = {"Off": None}
+        counts = Counter(body.name for body in site.bodies_of_water.values())
+        seen: Counter[str] = Counter()
+        for body in site.bodies_of_water.values():
+            seen[body.name] += 1
+            label = body.name
+            if counts[body.name] > 1:
+                label = f"{body.name} ({seen[body.name]})"
+            options[label] = body.uuid
+        return options
+
+    @property
+    def options(self) -> list[str]:
+        """Return the Off option and discovered body names."""
+        return list(self._options_map)
+
+    @property
+    def current_option(self) -> str:
+        """Return the selected body name, defaulting to Off."""
+        selected = self.coordinator.active_body(self.site_uuid)
+        for label, body_uuid in self._options_map.items():
+            if body_uuid == selected:
+                return label
+        return "Off"
+
+    async def async_select_option(self, option: str) -> None:
+        """Change only the local scope; never infer or issue a remote mode write."""
+        if option not in self._options_map:
+            raise ValueError("Body option is not available")
+        self.coordinator.set_active_body(self.site_uuid, self._options_map[option])
 
 
 def _theme_options(coordinator: PoolsideCoordinator, site_uuid: str) -> dict[str, str]:

@@ -70,14 +70,23 @@ def test_body_relationships_only_join_explicitly_connected_bodies(
             "UUID": "spa",
             "Name": "Spa",
             "Type": "Spa",
-            "Spillover": {"ConnectedThings": [{"UUID": "pool"}]},
+            "Spillover": {
+                "ConnectedThings": [
+                    {"UUID": "pool"},
+                    "pool",
+                    {"UUID": ""},
+                    {"UUID": "pool"},
+                    {"UUID": "ghost"},
+                ]
+            },
         },
-        {"UUID": "pond", "Name": "Pond", "Type": "Pond"},
+        {"UUID": "pond", "Name": "Pond", "Type": "Pond", "Spillover": {"ConnectedThings": {}}},
     ]
     site["Controls"] = [
         {"UUID": "pool-light", "Name": "Pool Light", "Type": "Light", "BodyOfWater": "pool"},
         {"UUID": "spa-light", "Name": "Spa Light", "Type": "Light", "BodyOfWater": "spa"},
         {"UUID": "pond-light", "Name": "Pond Light", "Type": "Light", "BodyOfWater": "pond"},
+        {"UUID": "ghost-control", "Name": "Ghost", "Type": "Light", "BodyOfWater": "ghost"},
     ]
     site["CombinedControls"] = [
         {
@@ -87,6 +96,19 @@ def test_body_relationships_only_join_explicitly_connected_bodies(
             "Controls": [{"ControlUUID": "pool-light"}, {"ControlUUID": "spa-light"}],
         }
     ]
+    cast("list[dict[str, object]]", site["CombinedControls"]).append(
+        {
+            "UUID": "invalid-members",
+            "Name": "Invalid members",
+            "Type": "Combined",
+            "Controls": [
+                "bad",
+                {"ControlUUID": "missing"},
+                {"ControlUUID": "pond-light"},
+                {"ControlUUID": "ghost-control"},
+            ],
+        }
+    )
     discovered = discover_sites(payload).sites["site-alpha"]
     groups = {frozenset(group) for group in discovered.body_connection_groups}
     assert frozenset({"pool", "spa"}) in groups

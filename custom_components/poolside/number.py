@@ -56,9 +56,9 @@ class PoolsideControlNumber(PoolsideEntity, NumberEntity):
 
     def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str, control_uuid: str) -> None:
         """Initialize from a stable Control UUID."""
-        super().__init__(coordinator, site_uuid)
-        self.control_uuid = control_uuid
         control = coordinator.site(site_uuid).all_controls[control_uuid]
+        super().__init__(coordinator, site_uuid, control.water_body_uuid)
+        self.control_uuid = control_uuid
         self._attr_unique_id = f"{control_uuid}_power_level"
         self._attr_name = f"{control.name} power level"
 
@@ -89,9 +89,9 @@ class PoolsideHeaterTemperature(PoolsideEntity, NumberEntity):
 
     def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str, control_uuid: str) -> None:
         """Initialize from a discovered Heating Control."""
-        super().__init__(coordinator, site_uuid)
-        self.control_uuid = control_uuid
         control = coordinator.site(site_uuid).all_controls[control_uuid]
+        super().__init__(coordinator, site_uuid, control.water_body_uuid)
+        self.control_uuid = control_uuid
         body = control.water_body_uuid
         label = "Pool" if body and "pool" in body.lower() else "Spa" if body else "Heater"
         self._attr_unique_id = f"{control_uuid}_temperature"

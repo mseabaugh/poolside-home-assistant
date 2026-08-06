@@ -22,10 +22,23 @@ class PoolsideEntity(CoordinatorEntity[PoolsideCoordinator]):
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str) -> None:
+    def __init__(
+        self,
+        coordinator: PoolsideCoordinator,
+        site_uuid: str,
+        body_uuid: str | None = None,
+    ) -> None:
         """Initialize from coordinator-owned state."""
         super().__init__(coordinator)
         self.site_uuid = site_uuid
+        self.body_uuid = body_uuid
+
+    @property
+    def available(self) -> bool:
+        """Hide body-scoped controls outside the selected local body scope."""
+        if not super().available:
+            return False
+        return self.coordinator.body_is_visible(self.site_uuid, self.body_uuid)
 
     @property
     def device_info(self) -> DeviceInfo:

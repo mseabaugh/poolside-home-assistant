@@ -56,9 +56,9 @@ class PoolsideLight(PoolsideEntity, LightEntity):
 
     def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str, control_uuid: str) -> None:
         """Initialize from stable remote identifiers."""
-        super().__init__(coordinator, site_uuid)
-        self.control_uuid = control_uuid
         control = coordinator.site(site_uuid).all_controls[control_uuid]
+        super().__init__(coordinator, site_uuid, control.water_body_uuid)
+        self.control_uuid = control_uuid
         self._attr_unique_id = control_uuid
         self._attr_name = control.name
         self._attr_supported_color_modes = {ColorMode.RGB}

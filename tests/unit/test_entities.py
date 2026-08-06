@@ -21,6 +21,7 @@ from custom_components.poolside.coordinator import PoolsideCoordinator
 from custom_components.poolside.entity import scalar_states, setup_dynamic_entities
 from custom_components.poolside.light import PoolsideLight
 from custom_components.poolside.models import (
+    BodyOfWater,
     PoolsideData,
     Site,
     Theme,
@@ -29,7 +30,11 @@ from custom_components.poolside.models import (
 )
 from custom_components.poolside.number import PoolsideControlNumber, PoolsideHeaterTemperature
 from custom_components.poolside.number import _entities as number_entities
-from custom_components.poolside.select import PoolsideThemeSelect, _theme_options
+from custom_components.poolside.select import (
+    PoolsideActiveBodySelect,
+    PoolsideThemeSelect,
+    _theme_options,
+)
 from custom_components.poolside.select import _entities as select_entities
 from custom_components.poolside.switch import PoolsideSwitch
 
@@ -277,6 +282,99 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
     )
     if dynamic_heater.native_value is not None:
         raise AssertionError("malformed setpoint should be unavailable")
+
+
+async def test_active_body_scope_exposes_options_and_filters_controls(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """The local body selector scopes controls without issuing a remote write."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    pool = BodyOfWater("pool", "Pool", "Pool", site.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        site.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    pool_light = replace(
+        site.controls["light-one"], raw={"BodyOfWater": "pool", "Type": "Light"}
+    )
+    spa_control = replace(
+        site.controls["filter-one"], raw={"BodyOfWater": "spa", "Type": "Filter"}
+    )
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                bodies_of_water={"pool": pool, "spa": spa},
+                controls={"light-one": pool_light, "filter-one": spa_control},
+            )
+        }
+    )
+    coordinator.async_update_listeners = lambda: None  # type: ignore[method-assign]
+    selector = PoolsideActiveBodySelect(coordinator, site.uuid)
+    assert selector.options == ["Off", "Pool", "Spa"]
+    assert selector.current_option == "Off"
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                coordinator.site(site.uuid),
+                bodies_of_water={
+                    "pool": pool,
+                    "spa": spa,
+                    "spa-2": BodyOfWater("spa-2", "Spa", "Spa", site.uuid),
+                },
+            )
+        }
+    )
+    assert selector.options == ["Off", "Pool", "Spa (1)", "Spa (2)"]
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                coordinator.site(site.uuid), bodies_of_water={"pool": pool, "spa": spa}
+            )
+        }
+    )
+    light = PoolsideLight(coordinator, site.uuid, "light-one")
+    switch = PoolsideSwitch(coordinator, site.uuid, "filter-one")
+    assert light.available
+    assert switch.available
+    await selector.async_select_option("Pool")
+    coordinator.set_active_body(site.uuid, "pool")
+    assert selector.current_option == "Pool"
+    assert light.available
+    assert not coordinator.body_is_visible(site.uuid, "spa")
+    assert coordinator.body_is_visible(site.uuid, "pond")
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                coordinator.site(site.uuid),
+                bodies_of_water={
+                    "pond": BodyOfWater("pond", "Pond", "Pond", site.uuid),
+                    "pool": pool,
+                    "spa": spa,
+                },
+            )
+        }
+    )
+    assert coordinator.body_is_visible(site.uuid, "pond")
+    coordinator._active_bodies.clear()
+    assert any(
+        isinstance(entity, PoolsideActiveBodySelect) for entity in select_entities(coordinator)
+    )
+    with pytest.raises(ValueError, match="not available"):
+        await selector.async_select_option("Unknown")
+    coordinator._active_bodies[site.uuid] = "missing"
+    assert selector.current_option == "Off"
+    assert coordinator.body_is_visible(site.uuid, "pond")
+    with pytest.raises(ValueError, match="not available"):
+        coordinator.set_active_body(site.uuid, "missing")
+    coordinator.last_update_success = False
+    assert not light.available
 
 
 async def test_switch_write_round_trip(

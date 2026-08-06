@@ -58,6 +58,10 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._pending_controls: dict[tuple[str, str], dict[str, object]] = {}
+        # Active body is a local control scope.  Poolside's API does not expose
+        # a confirmed body-mode write, so changing it must never send a remote
+        # command or imply that another body was switched off.
+        self._active_bodies: dict[str, str | None] = {}
 
     def _apply_pending_controls(self, data: PoolsideData) -> PoolsideData:
         """Overlay successful local writes until the cloud snapshot confirms them."""
@@ -172,6 +176,31 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
     def site(self, site_uuid: str) -> Site:
         """Return one current site snapshot."""
         return self.data.sites[site_uuid]
+
+    def active_body(self, site_uuid: str) -> str | None:
+        """Return the locally selected body scope, or ``None`` for all bodies."""
+        return getattr(self, "_active_bodies", {}).get(site_uuid)
+
+    def body_is_visible(self, site_uuid: str, body_uuid: str | None) -> bool:
+        """Return whether a body remains visible under the selected XOR group."""
+        selected = self.active_body(site_uuid)
+        if selected is None or body_uuid is None:
+            return True
+        site = self.site(site_uuid)
+        for group in site.body_connection_groups:
+            if selected in group:
+                return body_uuid == selected or body_uuid not in group
+        return True
+
+    def set_active_body(self, site_uuid: str, body_uuid: str | None) -> None:
+        """Set the local body scope and refresh dependent entity availability."""
+        if body_uuid is not None and body_uuid not in self.site(site_uuid).bodies_of_water:
+            raise ValueError("Body of water is not available")
+        active_bodies = getattr(self, "_active_bodies", None)
+        if active_bodies is None:
+            active_bodies = self._active_bodies = {}
+        active_bodies[site_uuid] = body_uuid
+        self.async_update_listeners()
 
     async def async_set_control(
         self,
