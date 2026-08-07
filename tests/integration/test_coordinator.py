@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Coroutine
+from dataclasses import replace
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -18,7 +19,12 @@ from custom_components.poolside.exceptions import (
     CannotConnectError,
     ProtocolError,
 )
-from custom_components.poolside.models import PoolsideData, apply_runtime, discover_sites
+from custom_components.poolside.models import (
+    BodyOfWater,
+    PoolsideData,
+    apply_runtime,
+    discover_sites,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -114,6 +120,68 @@ async def test_stale_refresh_keeps_successful_local_control_write(
     assert confirmed.sites[site.uuid].controls["light-one"].desired["Status"] == "ON"
     coordinator._pending_controls[("missing-site", "missing-control")] = {"Status": "OFF"}
     coordinator._apply_pending_controls(PoolsideData({site.uuid: site}))
+    await coordinator.async_shutdown()
+
+
+async def test_refresh_syncs_active_body_only_from_unambiguous_flow_control(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """A body mode follows a single confirmed Filter state, never equipment."""
+    discovered = discover_sites(user_config).sites["site-alpha"]
+    pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        discovered.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    filter_control = replace(
+        discovered.controls["filter-one"],
+        raw={"BodyOfWater": pool.uuid, "Type": "Filter"},
+        desired={"Status": "OFF"},
+    )
+    spa_filter = replace(
+        filter_control,
+        uuid="spa-filter",
+        raw={"BodyOfWater": spa.uuid, "Type": "Filter"},
+        desired={"Status": "ON"},
+    )
+    pump = replace(
+        filter_control,
+        uuid="pump-like-control",
+        type="Pump",
+        raw={"BodyOfWater": pool.uuid, "Type": "Pump"},
+        desired={"Status": "ON"},
+    )
+    site = replace(
+        discovered,
+        bodies_of_water={pool.uuid: pool, spa.uuid: spa},
+        controls={
+            filter_control.uuid: filter_control,
+            spa_filter.uuid: spa_filter,
+            pump.uuid: pump,
+        },
+    )
+    coordinator = PoolsideCoordinator(
+        hass,
+        config_entry,
+        LoadClient(PoolsideData({site.uuid: site})),  # type: ignore[arg-type]
+    )
+
+    await coordinator._async_update_data()
+    assert coordinator.active_body(site.uuid, "pool|spa") == spa.uuid
+
+    ambiguous = replace(filter_control, desired={"Status": "ON"})
+    coordinator._sync_confirmed_body_modes(
+        PoolsideData(
+            {site.uuid: replace(site, controls={**site.controls, ambiguous.uuid: ambiguous})}
+        )
+    )
+    assert coordinator.active_body(site.uuid, "pool|spa") is None
     await coordinator.async_shutdown()
 
 

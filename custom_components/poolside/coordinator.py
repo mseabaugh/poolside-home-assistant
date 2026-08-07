@@ -33,6 +33,8 @@ _REFRESH_PUSH_METHODS = frozenset(
         "Site.updateAlerts",
     }
 )
+_FLOW_SCOPE_CONTROL_TYPES = frozenset({"filter", "circulation", "circulationcontrol"})
+_ACTIVE_FLOW_STATUSES = frozenset({"on", "running", "active"})
 
 
 class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
@@ -81,6 +83,28 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
             sites[site_uuid] = replace(site, controls=ordinary, combined_controls=combined)
         return replace(data, sites=sites)
 
+    def _sync_confirmed_body_modes(self, data: PoolsideData) -> None:
+        """Synchronize each body group from confirmed high-level flow state.
+
+        This is intentionally a read-only interpretation of Poolside's reported
+        desired state.  Physical equipment telemetry and unrecognized controls
+        cannot establish a body mode.  An incomplete or conflicting report is
+        represented as Off rather than guessed.
+        """
+        for site in data.sites.values():
+            for group in site.body_connection_groups:
+                active_bodies = {
+                    control.water_body_uuid
+                    for control in site.all_controls.values()
+                    if control.water_body_uuid in group
+                    and control.type.lower() in _FLOW_SCOPE_CONTROL_TYPES
+                    and str(control.desired.get("Status", "")).lower() in _ACTIVE_FLOW_STATUSES
+                }
+                group_key = "|".join(sorted(group))
+                self._active_bodies[(site.uuid, group_key)] = (
+                    next(iter(active_bodies)) if len(active_bodies) == 1 else None
+                )
+
     async def _async_update_data(self) -> PoolsideData:
         """Fetch a complete consistent account snapshot."""
         _LOGGER.debug("poolside_refresh outcome=started")
@@ -102,6 +126,7 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
             )
             raise UpdateFailed("Poolside refresh failed") from err
         else:
+            self._sync_confirmed_body_modes(data)
             _LOGGER.debug("poolside_refresh outcome=success site_count=%s", len(data.sites))
             return data
 

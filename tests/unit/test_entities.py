@@ -15,6 +15,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from custom_components.poolside.binary_sensor import PoolsideBinarySensor
+from custom_components.poolside.binary_sensor import _entities as binary_entities
 from custom_components.poolside.calendar import PoolsideCalendar
 from custom_components.poolside.calendar import _entities as calendar_entities
 from custom_components.poolside.coordinator import PoolsideCoordinator
@@ -22,6 +23,7 @@ from custom_components.poolside.entity import scalar_states, setup_dynamic_entit
 from custom_components.poolside.light import PoolsideLight
 from custom_components.poolside.models import (
     BodyOfWater,
+    Equipment,
     PoolsideData,
     Site,
     Theme,
@@ -36,6 +38,7 @@ from custom_components.poolside.select import (
     _theme_options,
 )
 from custom_components.poolside.select import _entities as select_entities
+from custom_components.poolside.sensor import _entities as sensor_entities
 from custom_components.poolside.sensor import _telemetry_is_applicable
 from custom_components.poolside.switch import PoolsideSwitch
 
@@ -123,6 +126,27 @@ def test_binary_sensor_handles_disappearing_equipment(
     coordinator.data = PoolsideData({site.uuid: replace(site, equipment={})})
     assert entity.is_on is None
     assert not entity.available
+
+
+def test_light_telemetry_filters_non_applicable_runtime_fields(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Light-only runtime fields do not become misleading diagnostics."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    strip = Equipment(
+        "strip-one",
+        "Strip 1",
+        "Light Strip",
+        site.uuid,
+        {"Moving": False, "Winterized": False, "Online": True, "Brightness": 90, "RPM": 1},
+    )
+    coordinator.data = PoolsideData({site.uuid: replace(site, equipment={strip.uuid: strip})})
+
+    assert [entity.state_key for entity in binary_entities(coordinator)] == ["Online"]
+    assert [entity.state_key for entity in sensor_entities(coordinator)] == ["Brightness"]
 
 
 async def test_calendar_fallback_empty_event_and_api(
