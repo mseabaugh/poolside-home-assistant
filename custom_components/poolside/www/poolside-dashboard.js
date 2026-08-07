@@ -21,6 +21,7 @@ class PoolsideDashboard extends HTMLElement {
         .mode { flex:1; border:0; border-radius:22px; padding:10px 12px; color:var(--primary-text-color); background:transparent; }
         .mode.active { color:var(--text-primary-color); background:var(--primary-color); font-weight:600; }
         .overview { display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:9px; }
+        .live-gauge-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:12px; margin-top:14px; }
         .stat { min-height:74px; padding:12px; border:1px solid var(--divider-color); border-radius:12px; background:var(--card-background-color); }
         .stat.water-temperature-cool { background:color-mix(in srgb, #90caf9 28%, var(--card-background-color)); }
         .stat.water-temperature-warm { background:color-mix(in srgb, #ffcc80 32%, var(--card-background-color)); }
@@ -38,8 +39,10 @@ class PoolsideDashboard extends HTMLElement {
         .label { display:flex; min-width:0; align-items:center; gap:8px; }
         .label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
-        .toggle { flex:0 0 auto; min-width:52px; padding:6px 10px; border:1px solid var(--divider-color); border-radius:18px; background:var(--card-background-color); color:var(--primary-text-color); }
-        .toggle.active { color:var(--text-primary-color); border-color:var(--primary-color); background:var(--primary-color); }
+        .toggle { position:relative; flex:0 0 auto; width:52px; height:30px; min-width:52px; padding:3px; border:1px solid var(--divider-color); border-radius:18px; background:var(--card-background-color); color:transparent; font-size:0; }
+        .toggle::before { content:""; display:block; width:22px; height:22px; border-radius:50%; background:var(--secondary-text-color); transition:transform .18s ease, background .18s ease; }
+        .toggle.active { border-color:var(--primary-color); background:var(--primary-color); }
+        .toggle.active::before { background:var(--text-primary-color); transform:translateX(22px); }
         .slider { width:104px; accent-color:var(--primary-color); }
         .value { min-width:44px; color:var(--secondary-text-color); font-size:.82rem; text-align:right; }
         .color { width:30px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:7px; background:transparent; }
@@ -62,7 +65,7 @@ class PoolsideDashboard extends HTMLElement {
         .light-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
         .light-tile { border:1px solid var(--divider-color); border-radius:12px; padding:10px; text-align:center; }
         .light-tile .color-presets { justify-content:center; margin-top:9px; }
-        .light-tile .toggle { width:100%; margin-top:9px; }
+        .light-tile .toggle { width:52px; margin:9px auto 0; }
         .history { min-height:104px; margin-top:10px; display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:8px; }
         .history-chart { border:1px solid var(--divider-color); border-radius:10px; padding:8px; }
         .history-chart svg { width:100%; height:62px; overflow:visible; }
@@ -99,6 +102,7 @@ class PoolsideDashboard extends HTMLElement {
         <p class="subtitle">Safe controls follow the confirmed Poolside cloud state.</p>
         <div class="mode-rail"></div>
         <div class="overview"></div>
+        <div class="live-gauge-grid"></div>
         <section class="home section"><div class="home-content"></div></section>
         <details class="advanced"><summary>Diagnostics</summary><p class="hint">Live read-only controller telemetry. Physical equipment and valves are never controlled here.</p><div class="gauge-grid"></div><div class="diagnostics"></div></details>
       </ha-card>`;
@@ -139,7 +143,8 @@ class PoolsideDashboard extends HTMLElement {
     this._renderModes(mode, modeEntity);
     this._renderOverview(mode, allControls, liveLights, diagnostics);
     this._renderHome(mode, activeControls, liveLights, running, homeData.chemistry, homeData.schedules);
-    this._renderAdvanced(diagnostics);
+    this._renderLiveGauges(diagnostics);
+    this._renderAdvanced(diagnostics, homeData.chemistry);
   }
 
   _renderUnavailable() {
@@ -180,8 +185,13 @@ class PoolsideDashboard extends HTMLElement {
       stats.push(["mdi:thermometer-water", "Temperature", label, `${temperatureClass}${air ? " temperature-with-air" : ""}`]);
     }
     const rpm = telemetry.map((id) => this._hass.states[id]).find((item) => item && !this._unavailable(item) && /primary.*pump.*rpm|main.*pump.*rpm/.test(this._identity(item)));
-    if (rpm && Number(rpm.state) > 0) stats.push(["mdi:fan", "Circulation", `${this._formatNumber(Number(rpm.state) / 34.5)}% · ${this._stateValue(rpm)}`]);
-    if (circulation && circulation.state === "on") stats.push(["mdi:fan", "Circulation", "Running"]);
+    const circulationRunning = circulation?.state === "on" || (rpm && Number(rpm.state) > 0);
+    if (circulationRunning) {
+      const circulationValue = rpm && Number(rpm.state) > 0
+        ? `${circulation?.state === "on" ? "Running · " : ""}${this._formatNumber(Number(rpm.state) / 34.5)}% · ${this._stateValue(rpm)}`
+        : "Running";
+      stats.push(["mdi:fan", "Circulation", circulationValue]);
+    }
     if (heater && heater.state === "on") stats.push(["mdi:fire", "Heating", "On"]);
     if (liveLights.length) stats.push(["mdi:lightbulb-group", "Lights", `${liveLights.filter((id) => this._hass.states[id]?.state === "on").length}/${liveLights.length}`]);
     if (features.some((item) => item.state === "on")) stats.push(["mdi:water", "Features", `${features.filter((item) => item.state === "on").length} active`]);
@@ -198,12 +208,10 @@ class PoolsideDashboard extends HTMLElement {
     if (heater) panels.push(heater);
     const features = this._featureCards([...groups.circulation, ...groups.features, ...groups.other]);
     if (features) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:water-outline"></ha-icon>Water features</div><div class="features">${features}</div></div>`);
-    if (chemistry.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:flask-outline"></ha-icon>Water chemistry</div><ul class="metric-list">${chemistry.map((state) => `<li><span>${this._escape(this._telemetryLabel(state))}</span><strong>${this._escape(this._stateValue(state))}</strong></li>`).join("")}</ul><div class="history" data-history="chemistry"></div></div>`);
     if (schedules.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:calendar-clock"></ha-icon>Schedules</div>${schedules.map((schedule) => `<div class="row"><div><strong>${this._escape(schedule.title)}</strong><div class="schedule-time">${this._escape(schedule.time)}</div></div></div>`).join("")}<p class="hint">Schedules are shown from Poolside. Editing remains in the Poolside app until its conflict-safe schedule write procedure is verified.</p></div>`);
     const resting = String(mode.state).toLowerCase() === "off" ? "Select Pool or Spa to start a water mode. Shared flow equipment stays protected until Poolside confirms the change." : `No Poolside equipment is currently running in ${mode.state}.`;
     target.innerHTML = panels.length ? `<div class="home-grid">${panels.join("")}</div>` : `<div class="empty"><strong>Everything is resting.</strong><br><span class="hint">${this._escape(resting)}</span></div>`;
     this._wireControls(target);
-    this._loadHistory([...chemistry, ...this._temperatureStates()]);
   }
 
   _individualLights(lightIds) {
@@ -280,11 +288,21 @@ class PoolsideDashboard extends HTMLElement {
     return `<div class="panel all-lights"><div class="panel-title"><ha-icon icon="mdi:lightbulb-group"></ha-icon>All lights</div><div class="row"><div class="label"><span>${states.length} Poolside lights</span></div><div class="actions"><input class="slider all-lights-brightness" type="range" min="1" max="255" step="1" value="${brightest || 255}" data-lights="${ids}" aria-label="All Poolside lights brightness"><input class="color all-lights-color" type="color" value="${color}" data-lights="${ids}" aria-label="All Poolside lights color"><button class="toggle all-lights-toggle ${active ? "active" : ""}" data-lights="${ids}">${allOn ? "All off" : "All on"}</button></div></div><div class="color-presets" aria-label="All Poolside lights color presets">${presets.map(([name, value]) => `<button class="color-preset all-lights-preset" title="${name}" aria-label="Set all Poolside lights ${name}" aria-pressed="${color.toLowerCase() === value ? "true" : "false"}" style="background:${value}" data-lights="${ids}" data-color="${value}"></button>`).join("")}</div></div>`;
   }
 
-  _renderAdvanced(telemetry) {
+  _renderLiveGauges(telemetry) {
     const states = telemetry.map((id) => this._hass.states[id]).filter((state) => state && this._isUsefulTelemetry(state));
-    const gaugeStates = states.filter((state) => this._isGaugeTelemetry(state)).sort((left, right) => this._gaugePriority(left) - this._gaugePriority(right)).slice(0, 6);
-    this.shadowRoot.querySelector(".gauge-grid").innerHTML = gaugeStates.length ? gaugeStates.map((state) => this._gauge(state)).join("") : '<div class="empty">No live pressure, RPM, flow, or temperature telemetry is currently available.</div>';
+    const gaugeStates = states.filter((state) => {
+      const identity = this._identity(state);
+      return /pressure|water.*(temperature|thermistor)|ambient.*temperature|air.*temperature|primary.*pump.*rpm|main.*pump.*rpm/.test(identity) && this._isGaugeTelemetry(state);
+    });
+    this.shadowRoot.querySelector(".live-gauge-grid").innerHTML = gaugeStates.length ? gaugeStates.map((state) => this._gauge(state)).join("") : "";
+  }
+
+  _renderAdvanced(telemetry, chemistry = []) {
+    const states = telemetry.map((id) => this._hass.states[id]).filter((state) => state && this._isUsefulTelemetry(state));
+    const chemistryPanel = chemistry.length ? `<div class="panel"><div class="panel-title"><ha-icon icon="mdi:flask-outline"></ha-icon>Water chemistry</div><ul class="metric-list">${chemistry.map((state) => `<li><span>${this._escape(this._telemetryLabel(state))}</span><strong>${this._escape(this._stateValue(state))}</strong></li>`).join("")}</ul><div class="history" data-history="chemistry"></div></div>` : "";
+    this.shadowRoot.querySelector(".gauge-grid").innerHTML = chemistryPanel;
     this.shadowRoot.querySelector(".diagnostics").innerHTML = states.length ? states.map((state) => `<div class="diagnostic-row"><span>${this._escape(this._telemetryLabel(state))}</span><span>${this._escape(this._stateValue(state))}</span></div>`).join("") : '<p class="hint">No controller telemetry has been reported.</p>';
+    this._loadHistory([...chemistry, ...this._temperatureStates(), ...this._ambientTemperatureStates()]);
   }
 
   _gauge(state) {
@@ -297,8 +315,10 @@ class PoolsideDashboard extends HTMLElement {
     const progress = arc * (percent / 100);
     const label = this._telemetryLabel(state);
     const unit = this._unitFor(state);
+    const displayValue = /primary.*pump.*rpm|main.*pump.*rpm/.test(identity) && Number.isFinite(value) ? `${this._formatNumber(value / 34.5)}%` : Number.isFinite(value) ? this._formatNumber(value) : "—";
+    const displayUnit = /primary.*pump.*rpm|main.*pump.*rpm/.test(identity) && Number.isFinite(value) ? `${this._formatNumber(value)} ${unit}` : unit;
     const temperatureClass = /temperature|thermistor/.test(identity) ? value <= 75 ? "temperature-cool" : value >= 90 ? "temperature-hot" : "temperature-warm" : "";
-    return `<div class="gauge ${temperatureClass}"><svg viewBox="0 0 112 112" aria-label="${this._escape(label)}"><circle class="track" cx="56" cy="56" r="45" transform="rotate(120 56 56)" stroke-dasharray="${arc} ${circumference - arc}"></circle><circle class="progress" cx="56" cy="56" r="45" transform="rotate(120 56 56)" stroke-dasharray="${progress} ${circumference - progress}"></circle></svg><div class="gauge-value"><strong>${Number.isFinite(value) ? this._escape(this._formatNumber(value)) : "—"}</strong><small>${this._escape(unit)}</small></div><div class="gauge-label">${this._escape(label)}</div></div>`;
+    return `<div class="gauge ${temperatureClass}"><svg viewBox="0 0 112 112" aria-label="${this._escape(label)}"><circle class="track" cx="56" cy="56" r="45" transform="rotate(120 56 56)" stroke-dasharray="${arc} ${circumference - arc}"></circle><circle class="progress" cx="56" cy="56" r="45" transform="rotate(120 56 56)" stroke-dasharray="${progress} ${circumference - progress}"></circle></svg><div class="gauge-value"><strong>${this._escape(displayValue)}</strong><small>${this._escape(displayUnit)}</small></div><div class="gauge-label">${this._escape(label)}</div></div>`;
   }
 
   _control(entityId) {
@@ -499,6 +519,9 @@ class PoolsideDashboard extends HTMLElement {
   _temperatureStates() {
     return Object.values(this._hass.states).filter((state) => state && !this._unavailable(state) && /water.*(thermistor|temperature)|temperature.*water/.test(this._identity(state)) && this._isNumericState(state));
   }
+  _ambientTemperatureStates() {
+    return Object.values(this._hass.states).filter((state) => state && !this._unavailable(state) && /air.*temperature|ambient.*temperature|outside.*temperature/.test(this._identity(state)) && this._isNumericState(state));
+  }
   async _loadHistory(states) {
     const ids = [...new Set(states.map((state) => state.entity_id))].slice(0, 4);
     if (!ids.length || !this._hass.callApi) return;
@@ -533,7 +556,7 @@ class PoolsideDashboard extends HTMLElement {
       target.innerHTML = '<span class="hint">History will appear after Home Assistant records enough readings.</span>';
       return;
     }
-    target.innerHTML = `<div class="history-chart"><div class="hint">Water temperature, pH, and chlorine (normalized)</div><svg viewBox="0 0 100 62" preserveAspectRatio="none">${series.map((item) => `<polyline class="series-${item.index}" points="${item.points}"></polyline>`).join("")}</svg><div class="hint">${series.map((item) => `<span style="margin-right:10px"><i class="series-key series-${item.index}"></i>${this._escape(item.label)} ${this._escape(item.range)}</span>`).join("")}</div></div>`;
+    target.innerHTML = `<div class="history-chart"><div class="hint">Water temperature, air temperature, pH, ORP, and chlorine (normalized)</div><svg viewBox="0 0 100 62" preserveAspectRatio="none">${series.map((item) => `<polyline class="series-${item.index}" points="${item.points}"></polyline>`).join("")}</svg><div class="hint">${series.map((item) => `<span style="margin-right:10px"><i class="series-key series-${item.index}"></i>${this._escape(item.label)} ${this._escape(item.range)}</span>`).join("")}</div></div>`;
   }
   _escape(value) { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]); }
 }

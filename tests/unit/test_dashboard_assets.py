@@ -71,7 +71,7 @@ def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     assert "temperature-cool" in dashboard
     assert "history/period/" in dashboard
     assert "toFixed(2)" in dashboard
-    assert "if (chemistry.length)" in dashboard
+    assert "const chemistryPanel = chemistry.length ?" in dashboard
     assert "if (schedules.length)" in dashboard
     assert 'return state && !this._unavailable(state) && state.state === "on"' in dashboard
     assert 'details class="more"' not in dashboard
@@ -110,4 +110,6 @@ def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -
     assert "mdi:thermometer-water" in dashboard
     assert "temperature-with-air" in dashboard
     assert "\\nAir ${this._stateValue(air)}" in dashboard
-    assert "Water temperature, pH, and chlorine (normalized)" in dashboard
+    assert "circulationRunning" in dashboard
+    assert 'stats.push(["mdi:fan", "Circulation", circulationValue])' in dashboard
+    assert "Water temperature, air temperature, pH, ORP, and chlorine (normalized)" in dashboard
