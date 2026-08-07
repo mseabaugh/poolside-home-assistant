@@ -36,6 +36,7 @@ from custom_components.poolside.select import (
     _theme_options,
 )
 from custom_components.poolside.select import _entities as select_entities
+from custom_components.poolside.sensor import _telemetry_is_applicable
 from custom_components.poolside.switch import PoolsideSwitch
 
 pytestmark = pytest.mark.unit
@@ -429,3 +430,12 @@ def test_disabled_heater_is_hidden_from_number_entities(
         }
     )
     assert all(entity.control_uuid != heater.uuid for entity in number_entities(coordinator))
+
+
+def test_light_telemetry_filters_generic_physical_fields() -> None:
+    """LED strips keep light state but drop impossible movement fields."""
+    assert _telemetry_is_applicable("LightDriver", "ActualBrightness")
+    assert _telemetry_is_applicable("LED Strip", "ActualSpeed")
+    assert not _telemetry_is_applicable("LED Strip", "Moving")
+    assert not _telemetry_is_applicable("LED Strip", "Winterized")
+    assert not _telemetry_is_applicable("LED Strip", "RPM")

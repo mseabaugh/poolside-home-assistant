@@ -36,6 +36,11 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideBinarySensor
     for site in coordinator.data.sites.values():
         for equipment in site.equipment.values():
             for key, _value in scalar_states(equipment.states, boolean=True):
+                if equipment.type.casefold().find("light") >= 0 and key.casefold() in {
+                    "moving",
+                    "winterized",
+                }:
+                    continue
                 yield PoolsideBinarySensor(coordinator, site.uuid, equipment.uuid, key)
 
 

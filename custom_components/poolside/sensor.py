@@ -36,7 +36,18 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSensor]:
     for site in coordinator.data.sites.values():
         for equipment in site.equipment.values():
             for key, _value in scalar_states(equipment.states, boolean=False):
+                if not _telemetry_is_applicable(equipment.type, key):
+                    continue
                 yield PoolsideSensor(coordinator, site.uuid, equipment.uuid, key)
+
+
+def _telemetry_is_applicable(device_type: str, state_key: str) -> bool:
+    """Drop generic physical fields that cannot apply to light-only devices."""
+    lowered_type = device_type.casefold()
+    lowered_key = state_key.casefold()
+    if any(token in lowered_type for token in ("light", "strip", "led")):
+        return lowered_key not in {"moving", "winterized", "rpm"}
+    return True
 
 
 class PoolsideSensor(PoolsideEntity, SensorEntity):
@@ -57,7 +68,7 @@ class PoolsideSensor(PoolsideEntity, SensorEntity):
         self._attr_unique_id = f"{equipment_uuid}_{state_key}"
         self._attr_name = f"{equipment.name} {state_key}"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        if state_key.casefold() in {"rpm", "speed"}:
+        if state_key.casefold() == "rpm":
             self._attr_native_unit_of_measurement = "rpm"
 
     @property
