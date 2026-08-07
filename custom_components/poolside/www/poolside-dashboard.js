@@ -74,13 +74,15 @@ class PoolsideDashboard extends HTMLElement {
   _discoverEntities() {
     const result = { shared: [], pool: [], spa: [] };
     Object.entries(this._hass.states).forEach(([entityId, state]) => {
-      const name = String(state.attributes.friendly_name || entityId).toLowerCase();
+      const name = String(state.attributes.friendly_name || "").toLowerCase();
+      const identity = `${name} ${entityId.toLowerCase()}`;
       const domain = entityId.split(".")[0];
       if (["switch", "light", "number"].includes(domain)) {
-        if (name.startsWith("pool ")) result.pool.push(entityId);
-        else if (name.startsWith("spa ")) result.spa.push(entityId);
+        if (identity.includes("pool")) result.pool.push(entityId);
+        else if (identity.includes("spa")) result.spa.push(entityId);
+        else result.shared.push(entityId);
       }
-      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(name)) {
+      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(identity)) {
         result.shared.push(entityId);
       }
     });
