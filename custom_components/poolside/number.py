@@ -71,6 +71,18 @@ class PoolsideControlNumber(PoolsideEntity, NumberEntity):
             return float(value)
         return None
 
+    @property
+    def available(self) -> bool:
+        """Hide a stale percentage entity if Poolside disables its Control."""
+        control = self.coordinator.site(self.site_uuid).all_controls.get(self.control_uuid)
+        return bool(
+            super().available
+            and control is not None
+            and control.available
+            and _safe_binary(control)
+            and control.supports_percentage
+        )
+
     async def async_set_native_value(self, value: float) -> None:
         """Write an integral Poolside percentage after Home Assistant range validation."""
         if not 0 <= value <= _MAX_POWER_LEVEL:
@@ -115,6 +127,14 @@ class PoolsideHeaterTemperature(PoolsideEntity, NumberEntity):
             except ValueError:
                 return None
         return None
+
+    @property
+    def available(self) -> bool:
+        """Hide a stale heater setpoint when its high-level Control is disabled."""
+        control = self.coordinator.site(self.site_uuid).all_controls.get(self.control_uuid)
+        return bool(
+            super().available and control is not None and control.available and control.is_heating
+        )
 
     async def async_set_native_value(self, value: float) -> None:
         """Write only the confirmed heater SetPoint field."""

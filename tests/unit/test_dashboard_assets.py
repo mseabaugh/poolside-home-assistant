@@ -64,11 +64,31 @@ def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     ).read_text(encoding="utf-8")
 
     assert "Water chemistry" in dashboard
-    assert "Next schedule" in dashboard
-    assert "Running now" in dashboard
-    assert 'toFixed(2)' in dashboard
-    assert 'if (chemistry.length)' in dashboard
-    assert 'if (nextSchedule)' in dashboard
+    assert "Schedules" in dashboard
+    assert "Water features" in dashboard
+    assert "_individualLights(lightIds)" in dashboard
+    assert "_featureCards(ids)" in dashboard
+    assert "temperature-cool" in dashboard
+    assert "history/period/" in dashboard
+    assert "toFixed(2)" in dashboard
+    assert "if (chemistry.length)" in dashboard
+    assert "if (schedules.length)" in dashboard
     assert 'return state && !this._unavailable(state) && state.state === "on"' in dashboard
     assert 'details class="more"' not in dashboard
     assert "Daily controls" not in dashboard
+
+
+def test_dashboard_hides_unavailable_controls_and_keeps_power_levels_as_percentages() -> None:
+    """A homeowner card must never surface disabled controls or raw power units."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "_isDisplayableControl(state)" in dashboard
+    assert 'replace(/ power level$/i, "")' in dashboard
+    assert 'const unit = /power level/i.test(this._controlLabel(state)) ? "%"' in dashboard
+    assert "stroke-dasharray" in dashboard

@@ -442,6 +442,8 @@ def test_disabled_heater_is_hidden_from_number_entities(
     coordinator = _coordinator(user_config, states_payload, desired_payload)
     site = coordinator.site("site-alpha")
     heater = site.controls["heat-one"]
+    existing_heater = PoolsideHeaterTemperature(coordinator, site.uuid, heater.uuid)
+    existing_filter = PoolsideSwitch(coordinator, site.uuid, "filter-one")
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -449,11 +451,16 @@ def test_disabled_heater_is_hidden_from_number_entities(
                 controls={
                     **site.controls,
                     heater.uuid: replace(heater, desired={"Restricted": True}),
+                    "filter-one": replace(
+                        site.controls["filter-one"], desired={"Restricted": True}
+                    ),
                 },
             )
         }
     )
     assert all(entity.control_uuid != heater.uuid for entity in number_entities(coordinator))
+    assert not existing_heater.available
+    assert not existing_filter.available
 
 
 def test_light_telemetry_filters_generic_physical_fields() -> None:

@@ -74,6 +74,17 @@ class PoolsideSwitch(PoolsideEntity, SwitchEntity):
         control = self.coordinator.site(self.site_uuid).all_controls[self.control_uuid]
         return str(control.desired.get("Status", "OFF")).upper() == "ON"
 
+    @property
+    def available(self) -> bool:
+        """Hide an existing entity when Poolside no longer permits its control."""
+        control = self.coordinator.site(self.site_uuid).all_controls.get(self.control_uuid)
+        return bool(
+            super().available
+            and control is not None
+            and control.available
+            and _safe_binary(control)
+        )
+
     async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn on through the high-level Control API."""
         await self.async_write_control(self.control_uuid, {"Status": "ON"})
