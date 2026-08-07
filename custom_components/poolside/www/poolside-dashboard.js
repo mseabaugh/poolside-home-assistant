@@ -134,10 +134,14 @@ class PoolsideDashboard extends HTMLElement {
       if (["switch", "light"].includes(domain)) {
         const active = state.state === "on";
         const attrs = state.attributes;
-        const hasBrightness = domain === "light" && (attrs.brightness !== undefined || Array.isArray(attrs.supported_color_modes));
+        // PoolsideLight always implements dimming and RGB writes. Some HA state
+        // serializers omit empty capability attributes, so do not hide the
+        // controls merely because the current state is off or unavailable.
+        const isPoolsideLight = domain === "light" && (entityId.includes("poolside") || /^(pool|spa)\b/i.test(attrs.friendly_name || ""));
+        const hasBrightness = isPoolsideLight || (domain === "light" && (attrs.brightness !== undefined || Array.isArray(attrs.supported_color_modes)));
         const rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color : [0, 153, 204];
         const hex = `#${rgb.map((value) => Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, "0")).join("")}`;
-        const supportsColor = domain === "light" && (Array.isArray(attrs.rgb_color) || Array.isArray(attrs.hs_color) || (Array.isArray(attrs.supported_color_modes) && attrs.supported_color_modes.some((mode) => ["rgb", "hs", "xy"].includes(mode))));
+        const supportsColor = isPoolsideLight || (domain === "light" && (Array.isArray(attrs.rgb_color) || Array.isArray(attrs.hs_color) || (Array.isArray(attrs.supported_color_modes) && attrs.supported_color_modes.some((mode) => ["rgb", "hs", "xy"].includes(mode)))));
         const effects = domain === "light" && Array.isArray(attrs.effect_list) ? attrs.effect_list : [];
         const brightness = hasBrightness
           ? `<input class="number light-brightness" type="range" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${label} brightness" ${unavailable ? "disabled" : ""}>`
