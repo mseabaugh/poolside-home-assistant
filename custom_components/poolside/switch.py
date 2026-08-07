@@ -17,6 +17,8 @@ _SAFE_TYPE_HINTS: Final = (
     "blower",
     "cleaner",
     "filter",
+    "heat",
+    "heater",
     "jet",
     "spillover",
     "waterfeature",
