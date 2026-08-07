@@ -34,8 +34,11 @@ async def async_setup_entry(
 def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideEntity]:
     """Build active-body and Theme selectors from each discovered site."""
     for site in coordinator.data.sites.values():
-        if site.bodies_of_water:
-            yield PoolsideActiveBodySelect(coordinator, site.uuid)
+        groups = sorted(site.body_connection_groups, key=lambda group: tuple(sorted(group)))
+        for index, group in enumerate(groups):
+            yield PoolsideActiveBodySelect(
+                coordinator, site.uuid, group, primary=index == 0
+            )
         if site.themes:
             yield PoolsideThemeSelect(coordinator, site.uuid)
 
@@ -45,10 +48,39 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
 
     _attr_name = "Active body"
 
-    def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str) -> None:
+    def __init__(
+        self,
+        coordinator: PoolsideCoordinator,
+        site_uuid: str,
+        group: frozenset[str] | None = None,
+        *,
+        primary: bool = False,
+    ) -> None:
         """Initialize the local selector for one site."""
         super().__init__(coordinator, site_uuid)
-        self._attr_unique_id = f"{site_uuid}_active_body"
+        self._body_group: frozenset[str] = group or next(
+            iter(
+                sorted(
+                    coordinator.site(site_uuid).body_connection_groups,
+                    key=lambda item: tuple(sorted(item)),
+                )
+            )
+        )
+        self.group_key = "|".join(sorted(self._body_group))
+        self._attr_unique_id = (
+            f"{site_uuid}_active_body"
+            if primary
+            else f"{site_uuid}_active_body_{self.group_key}"
+        )
+        self._attr_name = "Active body" if primary else "Active body · " + self._group_label
+
+    @property
+    def _group_label(self) -> str:
+        """Return a concise label for a disconnected body group."""
+        site = self.coordinator.site(self.site_uuid)
+        return " / ".join(
+            site.bodies_of_water[uuid].name for uuid in sorted(self._body_group)
+        )
 
     @property
     def _options_map(self) -> dict[str, str | None]:
@@ -58,6 +90,8 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         counts = Counter(body.name for body in site.bodies_of_water.values())
         seen: Counter[str] = Counter()
         for body in site.bodies_of_water.values():
+            if body.uuid not in self._body_group:
+                continue
             seen[body.name] += 1
             label = body.name
             if counts[body.name] > 1:
@@ -73,7 +107,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
     @property
     def current_option(self) -> str:
         """Return the selected body name, defaulting to Off."""
-        selected = self.coordinator.active_body(self.site_uuid)
+        selected = self.coordinator.active_body(self.site_uuid, self.group_key)
         for label, body_uuid in self._options_map.items():
             if body_uuid == selected:
                 return label
@@ -83,7 +117,9 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         """Change only the local scope; never infer or issue a remote mode write."""
         if option not in self._options_map:
             raise ValueError("Body option is not available")
-        self.coordinator.set_active_body(self.site_uuid, self._options_map[option])
+        self.coordinator.set_active_body(
+            self.site_uuid, self._options_map[option], self.group_key
+        )
 
 
 def _theme_options(coordinator: PoolsideCoordinator, site_uuid: str) -> dict[str, str]:

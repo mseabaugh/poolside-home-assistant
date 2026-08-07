@@ -331,7 +331,11 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
             )
         }
     )
-    assert selector.options == ["Off", "Pool", "Spa (1)", "Spa (2)"]
+    assert selector.options == ["Off", "Pool", "Spa (1)"]
+    disconnected = PoolsideActiveBodySelect(
+        coordinator, site.uuid, frozenset({"spa-2"})
+    )
+    assert disconnected.options == ["Off", "Spa (1)"]
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -348,6 +352,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     assert switch.device_info["name"] == "Spa"
     await selector.async_select_option("Pool")
     coordinator.set_active_body(site.uuid, "pool")
+    assert coordinator.active_body(site.uuid) == "pool"
     assert selector.current_option == "Pool"
     assert light.available
     assert not coordinator.body_is_visible(site.uuid, "spa")
@@ -371,11 +376,13 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     )
     with pytest.raises(ValueError, match="not available"):
         await selector.async_select_option("Unknown")
-    coordinator._active_bodies[site.uuid] = "missing"
+    coordinator._active_bodies[(site.uuid, "pool|spa")] = "missing"
     assert selector.current_option == "Off"
     assert coordinator.body_is_visible(site.uuid, "pond")
     with pytest.raises(ValueError, match="not available"):
         coordinator.set_active_body(site.uuid, "missing")
+    with pytest.raises(ValueError, match="group is required"):
+        coordinator.set_active_body(site.uuid, None)
     coordinator.last_update_success = False
     assert not light.available
 
