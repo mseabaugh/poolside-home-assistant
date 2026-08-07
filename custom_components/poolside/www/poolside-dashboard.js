@@ -44,6 +44,7 @@ class PoolsideDashboard extends HTMLElement {
         .toggle.active { border-color:var(--primary-color); background:var(--primary-color); }
         .toggle.active::before { background:var(--text-primary-color); transform:translateX(22px); }
         .slider { width:104px; accent-color:var(--primary-color); }
+        ha-slider.native-light-slider { display:block; width:100%; --ha-slider-track-color:var(--divider-color); --ha-slider-track-color-active:var(--primary-color); --ha-slider-thumb-color:var(--primary-color); }
         .value { min-width:44px; color:var(--secondary-text-color); font-size:.82rem; text-align:right; }
         .color { width:30px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:7px; background:transparent; }
         .color-presets { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
@@ -225,7 +226,7 @@ class PoolsideDashboard extends HTMLElement {
     const rgb = Array.isArray(state.attributes.rgb_color) ? state.attributes.rgb_color : [0, 153, 204];
     const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
     const presets = [["Red", "#ff4500"], ["Blue", "#2164f3"], ["Green", "#20d34a"], ["Purple", "#b900f5"], ["White", "#fffefa"], ["Warm", "#ffa45a"]];
-    return `<div class="light-tile"><strong>${this._escape(this._controlLabel(state))}</strong><div class="hint">${this._escape(this._status(state))}</div><input class="slider light-brightness" type="range" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${this._escape(this._controlLabel(state))} brightness"><div class="color-presets">${presets.map(([name, value]) => `<button class="color-preset light-preset" title="${name}" aria-label="Set ${this._escape(this._controlLabel(state))} ${name}" style="background:${value}" data-entity="${entityId}" data-color="${value}"></button>`).join("")}</div><button class="toggle ${state.state === "on" ? "active" : ""}" data-entity="${entityId}">${state.state === "on" ? "On" : "Off"}</button></div>`;
+    return `<div class="light-tile"><strong>${this._escape(this._controlLabel(state))}</strong><div class="hint">${this._escape(this._status(state))}</div><ha-slider class="native-light-slider" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${this._escape(this._controlLabel(state))} brightness"></ha-slider><div class="color-presets">${presets.map(([name, value]) => `<button class="color-preset light-preset" title="${name}" aria-label="Set ${this._escape(this._controlLabel(state))} ${name}" style="background:${value}" data-entity="${entityId}" data-color="${value}"></button>`).join("")}</div><button class="toggle ${state.state === "on" ? "active" : ""}" data-entity="${entityId}">${state.state === "on" ? "On" : "Off"}</button></div>`;
   }
 
   _heaterCard(ids) {
@@ -343,7 +344,7 @@ class PoolsideDashboard extends HTMLElement {
     const isLight = domain === "light";
     const rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color : [0, 153, 204];
     const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
-    const brightness = isLight ? `<input class="slider light-brightness" type="range" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${name} brightness" ${disabled}>` : "";
+    const brightness = isLight ? `<ha-slider class="native-light-slider" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${name} brightness" ${disabled}></ha-slider>` : "";
     const colorInput = isLight ? `<input class="color light-color" type="color" value="${color}" data-entity="${entityId}" aria-label="${name} color" ${disabled}>` : "";
     return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${brightness}${colorInput}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${disabled}>${unavailable ? "—" : active ? "On" : "Off"}</button></div></div>`;
   }
@@ -358,6 +359,7 @@ class PoolsideDashboard extends HTMLElement {
     scope.querySelectorAll(".number").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
     scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", () => this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage: Number(input.value) })));
     scope.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
+    scope.querySelectorAll(".native-light-slider").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     scope.querySelectorAll(".light-color").forEach((input) => input.addEventListener("change", () => {
       const raw = input.value.slice(1);
       this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, rgb_color: [0, 2, 4].map((offset) => parseInt(raw.slice(offset, offset + 2), 16)) });
