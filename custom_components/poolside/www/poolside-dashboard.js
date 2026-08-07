@@ -85,7 +85,11 @@ class PoolsideDashboard extends HTMLElement {
       return ids.length ? ids : fallback;
     };
     const safeControl = (id) => ["switch", "light", "number"].includes(id.split(".")[0]);
-    const diagnostics = configured("shared_entities", discovered.telemetry, (id) => ["sensor", "binary_sensor"].includes(id.split(".")[0]));
+    // A hand-picked diagnostics list is additive.  Replacing discovery here can
+    // hide the authoritative Water Thermistor and leave a pump drive temperature
+    // as the only temperature available in the overview.
+    const configuredDiagnostics = configured("shared_entities", [], (id) => ["sensor", "binary_sensor"].includes(id.split(".")[0]));
+    const diagnostics = [...new Set([...discovered.telemetry, ...configuredDiagnostics])];
     const pool = configured("pool_entities", discovered.pool, safeControl);
     const spa = configured("spa_entities", discovered.spa, safeControl);
     const allControls = [...new Set([...pool, ...spa])];
