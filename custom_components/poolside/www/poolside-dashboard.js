@@ -89,12 +89,13 @@ class PoolsideDashboard extends HTMLElement {
       const name = String(state.attributes.friendly_name || "").toLowerCase();
       const identity = `${name} ${entityId.toLowerCase()}`;
       const domain = entityId.split(".")[0];
+      const isPoolside = entityId.includes("poolside") || /^(pool|spa|poolside)\b/.test(name);
       if (["switch", "light", "number"].includes(domain)) {
         if (identity.includes("pool")) result.pool.push(entityId);
         else if (identity.includes("spa")) result.spa.push(entityId);
-        else result.shared.push(entityId);
+        else if (isPoolside) result.shared.push(entityId);
       }
-      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(identity)) {
+      if (["sensor", "binary_sensor"].includes(domain) && isPoolside && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(identity)) {
         result.shared.push(entityId);
       }
     });
