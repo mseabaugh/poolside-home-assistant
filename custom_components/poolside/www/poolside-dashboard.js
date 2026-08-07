@@ -39,6 +39,9 @@ class PoolsideDashboard extends HTMLElement {
         .slider { width:104px; accent-color:var(--primary-color); }
         .value { min-width:44px; color:var(--secondary-text-color); font-size:.82rem; text-align:right; }
         .color { width:30px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:7px; background:transparent; }
+        .color-presets { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+        .color-preset { width:25px; height:25px; min-width:25px; padding:0; border:2px solid var(--divider-color); border-radius:50%; }
+        .color-preset[aria-pressed="true"] { outline:2px solid var(--primary-color); outline-offset:2px; }
         .effect { max-width:105px; border:1px solid var(--divider-color); border-radius:7px; padding:4px; color:var(--primary-text-color); background:var(--card-background-color); }
         .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
         .feature { border:1px solid var(--divider-color); border-radius:10px; padding:8px 10px; }
@@ -97,7 +100,7 @@ class PoolsideDashboard extends HTMLElement {
     const activeControls = selected === "pool" ? pool : selected === "spa" ? spa : [];
     this._renderModes(mode, modeEntity);
     this._renderOverview(mode, activeControls, allControls, diagnostics);
-    this._renderDaily(mode, activeControls);
+    this._renderDaily(mode, activeControls, lights);
     this._renderMore(activeControls);
     this._renderAdvanced(diagnostics);
   }
@@ -143,10 +146,12 @@ class PoolsideDashboard extends HTMLElement {
     this.shadowRoot.querySelector(".overview").innerHTML = stats.map(([icon, label, value]) => `<div class="stat"><span class="stat-label"><ha-icon icon="${icon}"></ha-icon>${this._escape(label)}</span><span class="stat-value">${this._escape(value)}</span></div>`).join("");
   }
 
-  _renderDaily(mode, controls) {
+  _renderDaily(mode, controls, allLights) {
     const target = this.shadowRoot.querySelector(".daily-content");
+    const allLightsControl = this._allLightsControl(allLights);
     if (String(mode.state).toLowerCase() === "off") {
-      target.innerHTML = '<div class="empty"><strong>Select Pool or Spa to control that body.</strong><br><span class="hint">This keeps connected water paths exclusive and lets Poolside coordinate valves safely.</span></div>';
+      target.innerHTML = `${allLightsControl}<div class="empty"><strong>Select Pool or Spa to control that body.</strong><br><span class="hint">This keeps connected water paths exclusive and lets Poolside coordinate valves safely.</span></div>`;
+      this._wireControls(target);
       return;
     }
     const groups = this._groups(controls);
@@ -157,7 +162,7 @@ class PoolsideDashboard extends HTMLElement {
     ].filter(([, , ids]) => ids.length);
     const essentials = panels.map(([icon, title, ids]) => `<div class="panel"><div class="panel-title"><ha-icon icon="${icon}"></ha-icon>${title}</div>${ids.map((id) => this._control(id)).join("")}</div>`).join("");
     const featureRows = groups.features.map((id) => `<div class="feature">${this._control(id)}</div>`).join("");
-    target.innerHTML = `<p class="hint">${this._escape(`Controlling ${mode.state}. Changes are confirmed by Poolside before the display updates.`)}</p><div class="essentials">${essentials || '<div class="empty">No daily controls were discovered for this body.</div>'}</div>${featureRows ? `<section class="section"><div class="section-head"><h3>Water features</h3></div><div class="features">${featureRows}</div></section>` : ""}`;
+    target.innerHTML = `${allLightsControl}<p class="hint">${this._escape(`Controlling ${mode.state}. Changes are confirmed by Poolside before the display updates.`)}</p><div class="essentials">${essentials || '<div class="empty">No daily controls were discovered for this body.</div>'}</div>${featureRows ? `<section class="section"><div class="section-head"><h3>Water features</h3></div><div class="features">${featureRows}</div></section>` : ""}`;
     this._wireControls(target);
   }
 
@@ -166,6 +171,19 @@ class PoolsideDashboard extends HTMLElement {
     const remaining = this._groups(controls).other;
     target.innerHTML = remaining.length ? remaining.map((id) => this._control(id)).join("") : '<p class="hint">No additional safe controls are available for the selected body.</p>';
     this._wireControls(target);
+  }
+
+  _allLightsControl(lightIds) {
+    const states = lightIds.map((id) => this._hass.states[id]).filter(Boolean);
+    if (!states.length) return "";
+    const allOn = states.every((state) => state.state === "on");
+    const active = states.some((state) => state.state === "on");
+    const brightest = Math.max(...states.map((state) => Number(state.attributes.brightness) || 0));
+    const rgb = states.find((state) => Array.isArray(state.attributes.rgb_color))?.attributes.rgb_color || [0, 153, 204];
+    const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
+    const ids = this._escape(lightIds.join(","));
+    const presets = [["Aqua", "#0099cc"], ["Blue", "#2164f3"], ["Green", "#20b25b"], ["Purple", "#8e44d8"], ["Red", "#df3c3c"], ["White", "#ffffff"]];
+    return `<div class="panel all-lights"><div class="panel-title"><ha-icon icon="mdi:lightbulb-group"></ha-icon>All lights</div><div class="row"><div class="label"><span>${states.length} Poolside lights</span></div><div class="actions"><input class="slider all-lights-brightness" type="range" min="1" max="255" step="1" value="${brightest || 255}" data-lights="${ids}" aria-label="All Poolside lights brightness"><input class="color all-lights-color" type="color" value="${color}" data-lights="${ids}" aria-label="All Poolside lights color"><button class="toggle all-lights-toggle ${active ? "active" : ""}" data-lights="${ids}">${allOn ? "All off" : "All on"}</button></div></div><div class="color-presets" aria-label="All Poolside lights color presets">${presets.map(([name, value]) => `<button class="color-preset all-lights-preset" title="${name}" aria-label="Set all Poolside lights ${name}" aria-pressed="${color.toLowerCase() === value ? "true" : "false"}" style="background:${value}" data-lights="${ids}" data-color="${value}"></button>`).join("")}</div></div>`;
   }
 
   _renderAdvanced(telemetry) {
@@ -219,6 +237,16 @@ class PoolsideDashboard extends HTMLElement {
       const raw = input.value.slice(1);
       this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, rgb_color: [0, 2, 4].map((offset) => parseInt(raw.slice(offset, offset + 2), 16)) });
     }));
+    scope.querySelectorAll(".all-lights-toggle").forEach((button) => button.addEventListener("click", () => {
+      const entityIds = this._lightIds(button.dataset.lights);
+      const allOn = entityIds.every((id) => this._hass.states[id]?.state === "on");
+      this._hass.callService("light", allOn ? "turn_off" : "turn_on", { entity_id: entityIds });
+    }));
+    scope.querySelectorAll(".all-lights-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: this._lightIds(input.dataset.lights), brightness: Number(input.value) })));
+    scope.querySelectorAll(".all-lights-color, .all-lights-preset").forEach((input) => input.addEventListener(input.classList.contains("all-lights-preset") ? "click" : "change", () => {
+      const raw = (input.dataset.color || input.value).slice(1);
+      this._hass.callService("light", "turn_on", { entity_id: this._lightIds(input.dataset.lights), rgb_color: [0, 2, 4].map((offset) => parseInt(raw.slice(offset, offset + 2), 16)) });
+    }));
   }
 
   _groups(ids) {
@@ -261,6 +289,8 @@ class PoolsideDashboard extends HTMLElement {
     if (this._hass.states[this.config.mode_entity]) return this.config.mode_entity;
     return Object.keys(this._hass.states).find((id) => id.startsWith("select.") && id.includes("active_body"));
   }
+
+  _lightIds(value) { return String(value || "").split(",").filter((id) => id.startsWith("light.") && this._hass.states[id]); }
 
   _identity(state) { return `${state?.attributes?.friendly_name || ""} ${state?.entity_id || ""}`.toLowerCase(); }
   _unavailable(state) { return !state || ["unavailable", "unknown"].includes(state.state); }

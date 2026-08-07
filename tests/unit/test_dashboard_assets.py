@@ -34,3 +34,20 @@ def test_dashboard_prefers_live_equipment_readings_in_gauges() -> None:
     assert "primary.*pump.*drivetemperature" in dashboard
     assert "feature.*pump.*drivetemperature" in dashboard
     assert "this._telemetryLabel(state)" in dashboard
+
+
+def test_dashboard_provides_a_safe_all_lights_group_control() -> None:
+    """Only discovered light entities may be targeted by the group control."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "_allLightsControl(lightIds)" in dashboard
+    assert "All lights" in dashboard
+    assert "all-lights-preset" in dashboard
+    assert 'id.startsWith("light.") && this._hass.states[id]' in dashboard
+    assert 'callService("light", allOn ? "turn_off" : "turn_on"' in dashboard
