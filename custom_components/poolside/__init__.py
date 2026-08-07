@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ACCESS_TOKEN
+from homeassistant.const import CONF_ACCESS_TOKEN, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
@@ -36,12 +36,30 @@ async def _async_register_frontend_assets(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig("/poolside", str(www), cache_headers=False)]
         )
-    # Home Assistant may initialize the frontend registry after integrations.
-    # Both bundled cards are local and need no HACS frontend dependency. The
-    # body selector is the small custom control; the dashboard card remains
-    # available for existing dashboards while native cards are recommended for
-    # new views.
-    hass.data.setdefault("frontend_extra_module_url", set())
+    _register_frontend_modules(hass)
+
+
+def _register_frontend_modules(hass: HomeAssistant) -> None:
+    """Register card modules, deferring until frontend setup when necessary.
+
+    Integrations can be initialized before the built-in frontend component. A
+    premature write to the frontend data key is unsafe because frontend setup
+    replaces that value with its URL manager. Waiting for Home Assistant to be
+    fully started preserves the registration across all startup orders.
+    """
+    if DATA_EXTRA_MODULE_URL not in hass.data:
+        if not hass.data.get("poolside_frontend_listener"):
+            hass.data["poolside_frontend_listener"] = True
+
+            async def _register_after_start(_event: object) -> None:
+                _register_frontend_modules(hass)
+
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED,
+                _register_after_start,
+            )
+        return
+
     add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
     add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
 

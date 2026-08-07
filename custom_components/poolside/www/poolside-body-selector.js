@@ -190,7 +190,9 @@ class PoolsideBodySelector extends HTMLElement {
   }
 }
 
-customElements.define("poolside-body-selector", PoolsideBodySelector);
+if (!customElements.get("poolside-body-selector")) {
+  customElements.define("poolside-body-selector", PoolsideBodySelector);
+}
 
 // Lovelace discovers custom cards through this registry. Without it the resource
 // can load successfully but the card will not appear in the dashboard picker.

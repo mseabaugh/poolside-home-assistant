@@ -537,7 +537,9 @@ class PoolsideDashboard extends HTMLElement {
   _escape(value) { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]); }
 }
 
-customElements.define("poolside-dashboard", PoolsideDashboard);
+if (!customElements.get("poolside-dashboard")) {
+  customElements.define("poolside-dashboard", PoolsideDashboard);
+}
 window.customCards = window.customCards || [];
 if (!window.customCards.some((card) => card.type === "poolside-dashboard")) {
   window.customCards.push({ type: "poolside-dashboard", name: "Poolside Dashboard", description: "Daily Poolside controls with advanced live telemetry gauges." });

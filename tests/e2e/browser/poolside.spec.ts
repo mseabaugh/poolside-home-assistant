@@ -67,6 +67,10 @@ test("user adds Poolside and a UI switch round-trips through the application", a
   await page.getByRole("button", { name: /skip and finish|finish/i }).click();
 
   await page.goto("/lovelace/0");
+  // A full navigation is intentional: it verifies the integration registers
+  // its bundled card module in a fresh frontend, not only in an already warm
+  // browser tab.
+  await page.reload();
   await expect(page.locator("poolside-dashboard")).toBeVisible({ timeout: 60_000 });
   const row = page.locator("hui-toggle-entity-row").filter({ hasText: "Filter" });
   await expect(row).toBeVisible({ timeout: 60_000 });

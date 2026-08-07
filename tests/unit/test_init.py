@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, UrlManager
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 
 from custom_components import poolside
@@ -24,6 +26,20 @@ class DummyHTTP:
         self.paths = paths
 
 
+class DummyBus:
+    """Capture one-shot startup listeners."""
+
+    def __init__(self, delegate: Any) -> None:
+        self._delegate = delegate
+        self.callbacks: list[tuple[str, Any]] = []
+
+    def async_listen_once(self, event: str, callback: Any) -> None:
+        self.callbacks.append((event, callback))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._delegate, name)
+
+
 async def test_async_setup_registers_frontend_assets_when_http_is_available(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -35,6 +51,7 @@ async def test_async_setup_registers_frontend_assets_when_http_is_available(
         "add_extra_js_url",
         lambda hass_arg, url: captured_urls.append((hass_arg, url)),
     )
+    hass.data[DATA_EXTRA_MODULE_URL] = UrlManager(lambda _change, _url: None, [])
     monkeypatch.setattr(hass, "http", dummy_http, raising=False)
     assert await poolside.async_setup(hass, {})
 
@@ -61,10 +78,36 @@ async def test_async_setup_skips_static_registration_when_http_is_missing(
         "add_extra_js_url",
         lambda hass_arg, url: captured_urls.append((hass_arg, url)),
     )
+    hass.data[DATA_EXTRA_MODULE_URL] = UrlManager(lambda _change, _url: None, [])
     monkeypatch.setattr(hass, "http", None, raising=False)
 
     assert await poolside.async_setup(hass, {})
 
+    assert captured_urls == [
+        (hass, "/poolside/poolside-body-selector.js"),
+        (hass, "/poolside/poolside-dashboard.js"),
+    ]
+
+
+async def test_frontend_module_registration_defers_until_frontend_is_ready(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A startup-order race must not lose the bundled card URLs."""
+    captured_urls: list[tuple[Any, str]] = []
+    dummy_bus = DummyBus(hass.bus)
+    monkeypatch.setattr(
+        poolside,
+        "add_extra_js_url",
+        lambda hass_arg, url: captured_urls.append((hass_arg, url)),
+    )
+    monkeypatch.setattr(hass, "bus", dummy_bus, raising=False)
+
+    poolside._register_frontend_modules(hass)
+
+    assert dummy_bus.callbacks
+    assert dummy_bus.callbacks[0][0] == EVENT_HOMEASSISTANT_STARTED
+    hass.data[DATA_EXTRA_MODULE_URL] = UrlManager(lambda _change, _url: None, [])
+    await dummy_bus.callbacks[0][1](object())
     assert captured_urls == [
         (hass, "/poolside/poolside-body-selector.js"),
         (hass, "/poolside/poolside-dashboard.js"),
