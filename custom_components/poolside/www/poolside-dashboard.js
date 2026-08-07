@@ -27,6 +27,7 @@ class PoolsideDashboard extends HTMLElement {
         .stat.water-temperature-hot { background:color-mix(in srgb, #ef9a9a 34%, var(--card-background-color)); }
         .stat-label { display:flex; gap:6px; align-items:center; color:var(--secondary-text-color); font-size:.76rem; }
         .stat-value { display:block; margin-top:8px; font-size:1.12rem; font-weight:600; }
+        .stat-value.temperature-with-air { white-space:pre-line; line-height:1.45; }
         .section { border-top:1px solid var(--divider-color); margin-top:18px; padding-top:15px; }
         .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
         .home-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; margin-top:14px; }
@@ -175,8 +176,8 @@ class PoolsideDashboard extends HTMLElement {
     if (water) {
       const temperature = Number(water.state);
       const temperatureClass = Number.isFinite(temperature) ? temperature <= 75 ? "water-temperature-cool" : temperature >= 90 ? "water-temperature-hot" : "water-temperature-warm" : "";
-      const label = air ? `Water ${this._stateValue(water)} · Air ${this._stateValue(air)}` : `Water ${this._stateValue(water)}`;
-      stats.push(["mdi:thermometer-water", "Temperature", label, temperatureClass]);
+      const label = air ? `Water ${this._stateValue(water)}\nAir ${this._stateValue(air)}` : `Water ${this._stateValue(water)}`;
+      stats.push(["mdi:thermometer-water", "Temperature", label, `${temperatureClass}${air ? " temperature-with-air" : ""}`]);
     }
     const rpm = telemetry.map((id) => this._hass.states[id]).find((item) => item && !this._unavailable(item) && /primary.*pump.*rpm|main.*pump.*rpm/.test(this._identity(item)));
     if (rpm && Number(rpm.state) > 0) stats.push(["mdi:fan", "Circulation", `${this._formatNumber(Number(rpm.state) / 34.5)}% · ${this._stateValue(rpm)}`]);
