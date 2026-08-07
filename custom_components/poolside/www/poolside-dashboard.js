@@ -30,6 +30,7 @@ class PoolsideDashboard extends HTMLElement {
         .toggle { flex:0 0 auto; min-width:58px; padding:6px 10px; border:1px solid var(--divider-color); background:var(--card-background-color); color:var(--primary-text-color); }
         .toggle.active { background:var(--primary-color); color:var(--text-primary-color); border-color:var(--primary-color); }
         .number { width:42%; accent-color:var(--primary-color); }
+        .color { width:34px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:6px; background:transparent; }
         summary { cursor:pointer; font-weight:600; }
         .notice { color:var(--warning-color); font-size:.78rem; margin-top:12px; }
       </style>
@@ -100,15 +101,21 @@ class PoolsideDashboard extends HTMLElement {
     };
     const active = states.filter((state) => state.state === "on").length;
     const unavailable = states.filter((state) => ["unavailable", "unknown"].includes(state.state)).length;
-    const heater = controls.find((id) => /heater/i.test(this._hass.states[id]?.attributes?.friendly_name || id));
-    const heaterState = heater ? this._hass.states[heater].state : "—";
+    const findControl = (pattern) => controls.map((id) => this._hass.states[id]).find((state) => state && pattern.test(state.attributes.friendly_name || ""));
+    const heater = findControl(/heater/i);
+    const filter = findControl(/filter|pump|circulation/i);
+    const lights = controls.filter((id) => id.startsWith("light.")).map((id) => this._hass.states[id]).filter(Boolean);
+    const features = controls.map((id) => this._hass.states[id]).filter((state) => state && /(bubbler|blower|cleaner|spill|jets)/i.test(state.attributes.friendly_name || ""));
+    const heaterSetpoint = controls.filter((id) => id.startsWith("number.")).map((id) => this._hass.states[id]).find((state) => state && /heater|temperature|setpoint/i.test(state.attributes.friendly_name || ""));
+    const heaterState = heater ? (heater.state === "on" ? "On" : heater.state) : "—";
+    const heatValue = heaterSetpoint && !["unavailable", "unknown"].includes(heaterSetpoint.state) ? ` · ${heaterSetpoint.state} ${heaterSetpoint.attributes.unit_of_measurement || ""}` : "";
     const metrics = [
       ["Mode", mode.state || "—"],
       ["Water temperature", findValue(/water.*temp|temp.*water|temperature/)],
-      ["Pump / motor", findValue(/rpm|speed|flow/)],
-      ["Heater", heaterState],
-      ["Active controls", `${active}/${controls.length || 0}`],
-      ["Unavailable", String(unavailable)],
+      ["Circulation", filter ? (filter.state === "on" ? "On" : filter.state) : findValue(/rpm|speed|flow/)],
+      ["Heating", `${heaterState}${heatValue}`],
+      ["Lighting", `${lights.filter((state) => state.state === "on").length}/${lights.length}`],
+      ["Features", `${features.filter((state) => state.state === "on").length}/${features.length}`],
     ];
     this.shadowRoot.querySelector(".summary-grid").innerHTML = metrics.map(([label, value]) => `<div class="metric"><span class="metric-label">${this._escape(label)}</span><span class="metric-value">${this._escape(value)}</span></div>`).join("");
   }
@@ -125,10 +132,18 @@ class PoolsideDashboard extends HTMLElement {
       const unavailable = ["unavailable", "unknown"].includes(state.state);
       if (["switch", "light"].includes(domain)) {
         const active = state.state === "on";
-        const brightness = domain === "light" && state.attributes.brightness !== undefined
-          ? `<input class="number light-brightness" type="range" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${label} brightness" ${unavailable ? "disabled" : ""}>`
+        const attrs = state.attributes;
+        const hasBrightness = domain === "light" && (attrs.brightness !== undefined || Array.isArray(attrs.supported_color_modes));
+        const rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color : [0, 153, 204];
+        const hex = `#${rgb.map((value) => Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, "0")).join("")}`;
+        const supportsColor = domain === "light" && (Array.isArray(attrs.rgb_color) || Array.isArray(attrs.hs_color) || (Array.isArray(attrs.supported_color_modes) && attrs.supported_color_modes.some((mode) => ["rgb", "hs", "xy"].includes(mode))));
+        const brightness = hasBrightness
+          ? `<input class="number light-brightness" type="range" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${label} brightness" ${unavailable ? "disabled" : ""}>`
           : "";
-        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions">${brightness}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${unavailable ? "disabled" : ""}>${active ? "On" : "Off"}</button></div></div>`;
+        const color = supportsColor
+          ? `<input class="color light-color" type="color" value="${hex}" data-entity="${entityId}" aria-label="${label} color" ${unavailable ? "disabled" : ""}>`
+          : "";
+        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions">${brightness}${color}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${unavailable ? "disabled" : ""}>${active ? "On" : "Off"}</button></div></div>`;
       }
       if (entityId.startsWith("number.") && state.attributes.min !== undefined) {
         const value = Number(state.state);
@@ -139,6 +154,11 @@ class PoolsideDashboard extends HTMLElement {
     section.querySelectorAll(".toggle").forEach((button) => button.addEventListener("click", () => this._hass.callService(button.dataset.entity.startsWith("light.") ? "light" : "switch", "toggle", { entity_id: button.dataset.entity })));
     section.querySelectorAll(".number:not(.light-brightness)").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
     section.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
+    section.querySelectorAll(".light-color").forEach((input) => input.addEventListener("change", () => {
+      const value = input.value.replace("#", "");
+      const rgb = [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16));
+      this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, rgb_color: rgb });
+    }));
   }
 
   _iconFor(state, entityId) {
