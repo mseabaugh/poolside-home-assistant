@@ -90,9 +90,11 @@ class PoolsideBodySelector extends HTMLElement {
           box-shadow: 2px 0 0 currentColor, 4px 0 0 currentColor, 6px 0 0 currentColor;
         }
         .confirm { color: var(--warning-color); font-size:.78rem; margin-top:14px; }
+        .flow-note { opacity:.7; font-size:.75rem; margin-top:8px; }
       </style>
       <ha-card>
         <div class="heading"></div><div class="state"></div>
+        <div class="flow-note">Shared valves and equipment follow the cloud mode procedure.</div>
         <div class="rail">
           <div class="fill" id="fill"></div>
           <div class="segments" id="segments"></div>

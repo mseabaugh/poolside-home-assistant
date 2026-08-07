@@ -42,11 +42,15 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSensor]:
 
 
 def _telemetry_is_applicable(device_type: str, state_key: str) -> bool:
-    """Drop generic physical fields that cannot apply to light-only devices."""
+    """Drop generic fields that cannot apply to a discovered device class."""
     lowered_type = device_type.casefold()
     lowered_key = state_key.casefold()
     if any(token in lowered_type for token in ("light", "strip", "led")):
         return lowered_key not in {"moving", "winterized", "rpm"}
+    if any(token in lowered_type for token in ("pump", "heater", "chiller", "sensor", "probe")):
+        return lowered_key not in {"brightness", "color", "lightname", "twinkle"}
+    if any(token in lowered_type for token in ("actuator", "valve", "relay", "flow switch")):
+        return lowered_key not in {"brightness", "color", "lightname", "twinkle", "rpm"}
     return True
 
 

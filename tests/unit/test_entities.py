@@ -439,3 +439,6 @@ def test_light_telemetry_filters_generic_physical_fields() -> None:
     assert not _telemetry_is_applicable("LED Strip", "Moving")
     assert not _telemetry_is_applicable("LED Strip", "Winterized")
     assert not _telemetry_is_applicable("LED Strip", "RPM")
+    assert not _telemetry_is_applicable("Pump", "Brightness")
+    assert not _telemetry_is_applicable("Three Way Actuator", "RPM")
+    assert _telemetry_is_applicable("Pump", "RPM")
