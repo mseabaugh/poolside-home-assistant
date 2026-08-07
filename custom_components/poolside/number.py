@@ -93,7 +93,12 @@ class PoolsideHeaterTemperature(PoolsideEntity, NumberEntity):
         super().__init__(coordinator, site_uuid, control.water_body_uuid)
         self.control_uuid = control_uuid
         body = control.water_body_uuid
-        label = "Pool" if body and "pool" in body.lower() else "Spa" if body else "Heater"
+        site = coordinator.site(site_uuid)
+        label = (
+            site.bodies_of_water[body].name
+            if body is not None and body in site.bodies_of_water
+            else "Heater"
+        )
         self._attr_unique_id = f"{control_uuid}_temperature"
         self._attr_name = f"{label} Heater"
 

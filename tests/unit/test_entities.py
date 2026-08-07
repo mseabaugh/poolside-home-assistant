@@ -283,6 +283,19 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
     if dynamic_heater.native_value is not None:
         raise AssertionError("malformed setpoint should be unavailable")
 
+    body = BodyOfWater("spa-body", "Spa", "Spa", current.uuid)
+    spa_control = replace(control, raw={"BodyOfWater": body.uuid, "Type": "HeatingControl"})
+    coordinator.data = PoolsideData(
+        {
+            current.uuid: replace(
+                current,
+                bodies_of_water={body.uuid: body},
+                controls={**current.controls, control.uuid: spa_control},
+            )
+        }
+    )
+    assert PoolsideHeaterTemperature(coordinator, current.uuid, control.uuid).name == "Spa Heater"
+
 
 async def test_active_body_scope_exposes_options_and_filters_controls(
     user_config: dict[str, Any],
