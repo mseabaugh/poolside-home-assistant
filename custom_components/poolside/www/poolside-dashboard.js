@@ -50,10 +50,14 @@ class PoolsideDashboard extends HTMLElement {
       button.addEventListener("click", () => this._select(option, mode.state));
       rail.appendChild(button);
     });
-    this._renderEntities("shared", this.config.shared_entities || []);
     const selected = (mode.state || "Off").toLowerCase();
-    this._renderEntities("pool", selected === "pool" ? (this.config.pool_entities || []) : []);
-    this._renderEntities("spa", selected === "spa" ? (this.config.spa_entities || []) : []);
+    const discovered = this._discoverEntities();
+    const shared = this.config.shared_entities?.length ? this.config.shared_entities : discovered.shared;
+    const pool = this.config.pool_entities?.length ? this.config.pool_entities : discovered.pool;
+    const spa = this.config.spa_entities?.length ? this.config.spa_entities : discovered.spa;
+    this._renderEntities("shared", shared);
+    this._renderEntities("pool", selected === "pool" ? pool : []);
+    this._renderEntities("spa", selected === "spa" ? spa : []);
   }
 
   _renderEntities(sectionName, entityIds) {
@@ -65,6 +69,22 @@ class PoolsideDashboard extends HTMLElement {
       const value = state.state === "on" || state.state === "off" ? state.state : `${state.state} ${state.attributes.unit_of_measurement || ""}`;
       return `<div class="row"><span>${this._escape(state.attributes.friendly_name || entityId)}</span><span>${this._escape(value)}</span></div>`;
     }).join("");
+  }
+
+  _discoverEntities() {
+    const result = { shared: [], pool: [], spa: [] };
+    Object.entries(this._hass.states).forEach(([entityId, state]) => {
+      const name = String(state.attributes.friendly_name || entityId).toLowerCase();
+      const domain = entityId.split(".")[0];
+      if (["switch", "light", "number"].includes(domain)) {
+        if (name.startsWith("pool ")) result.pool.push(entityId);
+        else if (name.startsWith("spa ")) result.spa.push(entityId);
+      }
+      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(name)) {
+        result.shared.push(entityId);
+      }
+    });
+    return result;
   }
 
   async _select(option, current) {
