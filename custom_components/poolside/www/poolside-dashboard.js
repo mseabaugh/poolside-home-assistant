@@ -172,7 +172,7 @@ class PoolsideDashboard extends HTMLElement {
     const states = telemetry.map((id) => this._hass.states[id]).filter((state) => state && this._isUsefulTelemetry(state));
     const gaugeStates = states.filter((state) => this._isGaugeTelemetry(state)).sort((left, right) => this._gaugePriority(left) - this._gaugePriority(right)).slice(0, 6);
     this.shadowRoot.querySelector(".gauge-grid").innerHTML = gaugeStates.length ? gaugeStates.map((state) => this._gauge(state)).join("") : '<div class="empty">No live pressure, RPM, flow, or temperature telemetry is currently available.</div>';
-    this.shadowRoot.querySelector(".diagnostics").innerHTML = states.length ? states.map((state) => `<div class="diagnostic-row"><span>${this._escape(state.attributes.friendly_name || "Telemetry")}</span><span>${this._escape(this._stateValue(state))}</span></div>`).join("") : '<p class="hint">No controller telemetry has been reported.</p>';
+    this.shadowRoot.querySelector(".diagnostics").innerHTML = states.length ? states.map((state) => `<div class="diagnostic-row"><span>${this._escape(this._telemetryLabel(state))}</span><span>${this._escape(this._stateValue(state))}</span></div>`).join("") : '<p class="hint">No controller telemetry has been reported.</p>';
   }
 
   _gauge(state) {
@@ -286,7 +286,7 @@ class PoolsideDashboard extends HTMLElement {
   }
   _isGaugeTelemetry(state) {
     const identity = this._identity(state);
-    return !/winterized|fault|online/.test(identity) && /(pressurepsi|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow)/.test(identity);
+    return !/winterized|fault|online|desired/.test(identity) && /(pressurepsi|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow)/.test(identity);
   }
   _gaugePriority(state) {
     const identity = this._identity(state);
@@ -294,8 +294,10 @@ class PoolsideDashboard extends HTMLElement {
     if (/water.*thermistor/.test(identity)) return 2;
     if (/primary.*pump.*rpm/.test(identity)) return 3;
     if (/feature.*pump.*rpm/.test(identity)) return 4;
-    if (/thermistor/.test(identity)) return 5;
-    return 6;
+    if (/primary.*pump.*drivetemperature/.test(identity)) return 5;
+    if (/feature.*pump.*drivetemperature/.test(identity)) return 6;
+    if (/thermistor/.test(identity)) return 7;
+    return 8;
   }
   _iconFor(state, id) {
     const identity = this._identity(state);
