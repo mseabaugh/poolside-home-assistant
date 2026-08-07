@@ -22,6 +22,9 @@ class PoolsideDashboard extends HTMLElement {
         .mode.active { color:var(--text-primary-color); background:var(--primary-color); font-weight:600; }
         .overview { display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:9px; }
         .stat { min-height:74px; padding:12px; border:1px solid var(--divider-color); border-radius:12px; background:var(--card-background-color); }
+        .stat.water-temperature-cool { background:color-mix(in srgb, #90caf9 28%, var(--card-background-color)); }
+        .stat.water-temperature-warm { background:color-mix(in srgb, #ffcc80 32%, var(--card-background-color)); }
+        .stat.water-temperature-hot { background:color-mix(in srgb, #ef9a9a 34%, var(--card-background-color)); }
         .stat-label { display:flex; gap:6px; align-items:center; color:var(--secondary-text-color); font-size:.76rem; }
         .stat-value { display:block; margin-top:8px; font-size:1.12rem; font-weight:600; }
         .section { border-top:1px solid var(--divider-color); margin-top:18px; padding-top:15px; }
@@ -63,6 +66,13 @@ class PoolsideDashboard extends HTMLElement {
         .history-chart { border:1px solid var(--divider-color); border-radius:10px; padding:8px; }
         .history-chart svg { width:100%; height:62px; overflow:visible; }
         .history-chart polyline { fill:none; stroke:var(--primary-color); stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round; }
+        .history-chart polyline.series-1 { stroke:#ff9800; }
+        .history-chart polyline.series-2 { stroke:#7e57c2; }
+        .history-chart polyline.series-3 { stroke:#26a69a; }
+        .series-key { display:inline-block; width:8px; height:8px; margin-right:3px; border-radius:50%; background:var(--primary-color); }
+        .series-key.series-1 { background:#ff9800; }
+        .series-key.series-2 { background:#7e57c2; }
+        .series-key.series-3 { background:#26a69a; }
         .history-chart small { color:var(--secondary-text-color); }
         .empty { padding:18px; text-align:center; color:var(--secondary-text-color); border:1px dashed var(--divider-color); border-radius:12px; }
         details { border-top:1px solid var(--divider-color); margin-top:18px; padding-top:14px; }
@@ -108,7 +118,7 @@ class PoolsideDashboard extends HTMLElement {
       const ids = Array.isArray(this.config[key]) ? this.config[key].filter((id) => this._hass.states[id] && allowed(id)) : [];
       return ids.length ? ids : fallback;
     };
-    const safeControl = (id) => ["switch", "light", "number"].includes(id.split(".")[0]);
+    const safeControl = (id) => ["switch", "light", "number", "fan", "climate"].includes(id.split(".")[0]);
     // A hand-picked diagnostics list is additive.  Replacing discovery here can
     // hide the authoritative Water Thermistor and leave a pump drive temperature
     // as the only temperature available in the overview.
@@ -159,14 +169,22 @@ class PoolsideDashboard extends HTMLElement {
     const heater = findControl(/heater/);
     const circulation = findControl(/filter|pump|circulation/);
     const features = allControls.map((id) => this._hass.states[id]).filter((item) => item && /(bubbler|blower|cleaner|spill|jets)/.test(this._identity(item)));
-    const water = findTelemetry([/water.*thermistor/, /water.*temp/, /temperature/], "");
+    const water = telemetry.map((id) => this._hass.states[id]).find((item) => item && !this._unavailable(item) && /water.*(thermistor|temp)|thermometer.*water/.test(this._identity(item)));
+    const air = telemetry.map((id) => this._hass.states[id]).find((item) => item && !this._unavailable(item) && /air.*temp|ambient.*temp|outside.*temp/.test(this._identity(item)));
     const stats = [["mdi:pool", "Mode", mode.state]];
-    if (water) stats.push(["mdi:thermometer-water", "Water", water]);
+    if (water) {
+      const temperature = Number(water.state);
+      const temperatureClass = Number.isFinite(temperature) ? temperature <= 75 ? "water-temperature-cool" : temperature >= 90 ? "water-temperature-hot" : "water-temperature-warm" : "";
+      const label = air ? `Water ${this._stateValue(water)} · Air ${this._stateValue(air)}` : `Water ${this._stateValue(water)}`;
+      stats.push(["mdi:thermometer-water", "Temperature", label, temperatureClass]);
+    }
+    const rpm = telemetry.map((id) => this._hass.states[id]).find((item) => item && !this._unavailable(item) && /primary.*pump.*rpm|main.*pump.*rpm/.test(this._identity(item)));
+    if (rpm && Number(rpm.state) > 0) stats.push(["mdi:fan", "Circulation", `${this._formatNumber(Number(rpm.state) / 34.5)}% · ${this._stateValue(rpm)}`]);
     if (circulation && circulation.state === "on") stats.push(["mdi:fan", "Circulation", "Running"]);
     if (heater && heater.state === "on") stats.push(["mdi:fire", "Heating", "On"]);
     if (liveLights.length) stats.push(["mdi:lightbulb-group", "Lights", `${liveLights.filter((id) => this._hass.states[id]?.state === "on").length}/${liveLights.length}`]);
     if (features.some((item) => item.state === "on")) stats.push(["mdi:water", "Features", `${features.filter((item) => item.state === "on").length} active`]);
-    this.shadowRoot.querySelector(".overview").innerHTML = stats.map(([icon, label, value]) => `<div class="stat"><span class="stat-label"><ha-icon icon="${icon}"></ha-icon>${this._escape(label)}</span><span class="stat-value">${this._escape(value)}</span></div>`).join("");
+    this.shadowRoot.querySelector(".overview").innerHTML = stats.map(([icon, label, value, className = ""]) => `<div class="stat ${className}"><span class="stat-label"><ha-icon icon="${icon}"></ha-icon>${this._escape(label)}</span><span class="stat-value">${this._escape(value)}</span></div>`).join("");
   }
 
   _renderHome(mode, activeControls, allLights, running, chemistry, schedules) {
@@ -204,13 +222,13 @@ class PoolsideDashboard extends HTMLElement {
   _heaterCard(ids) {
     const states = ids.map((id) => this._hass.states[id]).filter((state) => this._isDisplayableControl(state));
     if (!states.length) return "";
-    const heater = states.find((state) => state.entity_id.startsWith("switch."));
+    const heater = states.find((state) => state.entity_id.startsWith("switch.") || state.entity_id.startsWith("climate."));
     const setpoint = states.find((state) => state.entity_id.startsWith("number."));
     if (!heater && !setpoint) return "";
-    const on = heater?.state === "on";
+    const on = heater?.entity_id.startsWith("climate.") ? heater.state === "heat" : heater?.state === "on";
     const name = this._controlLabel(heater || setpoint);
     const slider = setpoint ? this._numberInput(setpoint, "heater-setpoint") : "";
-    const toggle = heater ? `<button class="toggle ${on ? "active" : ""}" data-entity="${heater.entity_id}">${on ? "On" : "Off"}</button>` : "";
+    const toggle = heater ? `<button class="toggle ${on ? "active" : ""}" data-entity="${heater.entity_id}" data-climate-next="${on ? "off" : "heat"}">${on ? "On" : "Off"}</button>` : "";
     return `<div class="panel heater ${on ? "active" : ""}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
   }
 
@@ -225,11 +243,13 @@ class PoolsideDashboard extends HTMLElement {
       grouped.set(key, item);
     });
     return [...grouped.values()].map(({ states, label }) => {
-      const toggle = states.find((state) => state.entity_id.startsWith("switch."));
+      const toggle = states.find((state) => state.entity_id.startsWith("switch.") || state.entity_id.startsWith("fan."));
       const rate = states.find((state) => state.entity_id.startsWith("number."));
-      const on = toggle?.state === "on";
+      const fan = states.find((state) => state.entity_id.startsWith("fan."));
+      const on = toggle?.entity_id.startsWith("fan.") ? toggle.state === "on" : toggle?.state === "on";
       const action = toggle ? `<button class="toggle ${on ? "active" : ""}" data-entity="${toggle.entity_id}">${on ? "On" : "Off"}</button>` : "";
-      return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="${this._iconFor(toggle || rate, (toggle || rate).entity_id)}"></ha-icon><span>${this._escape(label)}</span></div>${action}</div>${rate ? `<div class="feature-rate">${this._numberInput(rate, "feature-number")}</div>` : ""}</div>`;
+      const rateControl = fan ? this._fanInput(fan) : rate ? this._numberInput(rate, "feature-number") : "";
+      return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="${this._iconFor(toggle || rate || fan, (toggle || rate || fan).entity_id)}"></ha-icon><span>${this._escape(label)}</span></div>${action}</div>${rateControl ? `<div class="feature-rate">${rateControl}</div>` : ""}</div>`;
     }).join("");
   }
 
@@ -239,6 +259,11 @@ class PoolsideDashboard extends HTMLElement {
     const max = Number(state.attributes.max ?? 100);
     const unit = /power level/i.test(this._controlLabel(state)) ? "%" : state.attributes.unit_of_measurement || "";
     return `<input class="slider number ${className}" type="range" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))}"><span class="value">${Number.isFinite(value) ? this._escape(`${this._formatNumber(value)} ${unit}`) : "—"}</span>`;
+  }
+
+  _fanInput(state) {
+    const percentage = Number(state.attributes.percentage);
+    return `<input class="slider fan-percentage" type="range" min="0" max="100" step="1" value="${Number.isFinite(percentage) ? percentage : 0}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))} speed"><span class="value">${Number.isFinite(percentage) ? this._formatNumber(percentage) : "—"}%</span>`;
   }
 
   _allLightsControl(lightIds) {
@@ -289,6 +314,9 @@ class PoolsideDashboard extends HTMLElement {
       const max = Number(state.attributes.max ?? 100);
       return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions"><input class="slider number" type="range" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${entityId}" ${disabled}><span class="value">${Number.isFinite(value) ? this._escape(`${value} ${state.attributes.unit_of_measurement || ""}`) : "—"}</span></div></div>`;
     }
+    if (domain === "fan") {
+      return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${this._fanInput(state)}<button class="toggle ${state.state === "on" ? "active" : ""}" data-entity="${entityId}" ${disabled}>${unavailable ? "—" : state.state === "on" ? "On" : "Off"}</button></div></div>`;
+    }
     const active = state.state === "on";
     const attrs = state.attributes;
     const isLight = domain === "light";
@@ -300,8 +328,14 @@ class PoolsideDashboard extends HTMLElement {
   }
 
   _wireControls(scope) {
-    scope.querySelectorAll(".toggle[data-entity]").forEach((button) => button.addEventListener("click", () => this._hass.callService(button.dataset.entity.startsWith("light.") ? "light" : "switch", "toggle", { entity_id: button.dataset.entity })));
+    scope.querySelectorAll(".toggle[data-entity]").forEach((button) => button.addEventListener("click", () => {
+      const entityId = button.dataset.entity;
+      const domain = entityId.split(".")[0];
+      if (domain === "climate") return this._hass.callService("climate", "set_hvac_mode", { entity_id: entityId, hvac_mode: button.dataset.climateNext || "off" });
+      return this._hass.callService(domain === "light" ? "light" : domain, "toggle", { entity_id: entityId });
+    }));
     scope.querySelectorAll(".number").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
+    scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", () => this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage: Number(input.value) })));
     scope.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     scope.querySelectorAll(".light-color").forEach((input) => input.addEventListener("change", () => {
       const raw = input.value.slice(1);
@@ -344,11 +378,11 @@ class PoolsideDashboard extends HTMLElement {
       const domain = id.split(".")[0];
       const poolside = id.includes("poolside") || /^(pool|spa)\b/.test(name);
       if (!poolside) return;
-      if (["switch", "light", "number"].includes(domain)) {
+      if (["switch", "light", "number", "fan", "climate"].includes(domain)) {
         if (identity.includes("pool")) result.pool.push(id);
         else if (identity.includes("spa")) result.spa.push(id);
       }
-      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|firmware|version|fault|online)/.test(identity)) result.telemetry.push(id);
+      if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|thermometer|ph|chlorine|orp|firmware|version|fault|online)/.test(identity)) result.telemetry.push(id);
     });
     return result;
   }
@@ -486,15 +520,19 @@ class PoolsideDashboard extends HTMLElement {
   _renderHistory() {
     const target = this.shadowRoot.querySelector(".history");
     if (!target || !Array.isArray(this._history)) return;
-    const charts = this._history.map((rows) => {
+    const series = this._history.map((rows, index) => {
       const values = (Array.isArray(rows) ? rows : []).map((row) => Number(row.state)).filter(Number.isFinite);
-      if (values.length < 2) return "";
-      const min = Math.min(...values); const max = Math.max(...values); const range = Math.max(0.01, max - min);
-      const points = values.map((value, index) => `${(index / (values.length - 1)) * 100},${58 - ((value - min) / range) * 52}`).join(" ");
       const state = this._hass.states[rows[0]?.entity_id];
-      return state ? `<div class="history-chart"><small>${this._escape(this._telemetryLabel(state))}</small><svg viewBox="0 0 100 62" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg><small>${this._escape(this._formatNumber(min))}–${this._escape(this._formatNumber(max))} ${this._escape(this._unitFor(state))}</small></div>` : "";
+      if (!state || values.length < 2) return null;
+      const min = Math.min(...values); const max = Math.max(...values); const range = Math.max(0.01, max - min);
+      const points = values.map((value, point) => `${(point / (values.length - 1)) * 100},${58 - ((value - min) / range) * 52}`).join(" ");
+      return { index, label: this._telemetryLabel(state), points, range: `${this._formatNumber(min)}–${this._formatNumber(max)} ${this._unitFor(state)}` };
     }).filter(Boolean);
-    target.innerHTML = charts.join("") || '<span class="hint">History will appear after Home Assistant records enough readings.</span>';
+    if (!series.length) {
+      target.innerHTML = '<span class="hint">History will appear after Home Assistant records enough readings.</span>';
+      return;
+    }
+    target.innerHTML = `<div class="history-chart"><div class="hint">Water temperature, pH, and chlorine (normalized)</div><svg viewBox="0 0 100 62" preserveAspectRatio="none">${series.map((item) => `<polyline class="series-${item.index}" points="${item.points}"></polyline>`).join("")}</svg><div class="hint">${series.map((item) => `<span style="margin-right:10px"><i class="series-key series-${item.index}"></i>${this._escape(item.label)} ${this._escape(item.range)}</span>`).join("")}</div></div>`;
   }
   _escape(value) { return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]); }
 }

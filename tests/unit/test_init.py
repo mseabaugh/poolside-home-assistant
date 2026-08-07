@@ -47,6 +47,7 @@ async def test_async_setup_registers_frontend_assets_when_http_is_available(
     ]
     assert captured_urls == [
         (hass, "/poolside/poolside-body-selector.js"),
+        (hass, "/poolside/poolside-dashboard.js"),
     ]
 
 
@@ -66,4 +67,5 @@ async def test_async_setup_skips_static_registration_when_http_is_missing(
 
     assert captured_urls == [
         (hass, "/poolside/poolside-body-selector.js"),
+        (hass, "/poolside/poolside-dashboard.js"),
     ]

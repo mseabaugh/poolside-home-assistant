@@ -33,26 +33,29 @@ views:
             vertical: false
 
       - type: grid
-        title: Live water
+        title: Water and circulation
         columns: 2
         square: false
         cards:
-          - type: gauge
+          - type: tile
             entity: sensor.poolside_water_thermistor
             name: Water temperature
-            needle: true
-            min: 50
-            max: 105
-            severity:
-              green: 50
-              yellow: 75
-              red: 90
+            icon: mdi:thermometer-water
+            color: blue
+          - type: tile
+            entity: sensor.poolside_air_temperature
+            name: Air temperature
+            icon: mdi:thermometer
           - type: gauge
             entity: sensor.poolside_primary_pump_rpm
             name: Primary pump
             needle: true
             min: 0
             max: 3450
+          - type: tile
+            entity: sensor.poolside_primary_pump_speed_percent
+            name: Circulation speed
+            icon: mdi:fan
 
       - type: history-graph
         title: Water and chemistry — 24 hours
@@ -61,6 +64,9 @@ views:
           - entity: sensor.poolside_water_thermistor
             name: Water temperature
           - entity: sensor.poolside_ph
+            name: pH
+          - entity: sensor.poolside_chlorine
+            name: Chlorine
 
       - type: calendar
         title: Schedules

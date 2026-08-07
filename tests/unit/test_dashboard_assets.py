@@ -92,3 +92,20 @@ def test_dashboard_hides_unavailable_controls_and_keeps_power_levels_as_percenta
     assert 'replace(/ power level$/i, "")' in dashboard
     assert 'const unit = /power level/i.test(this._controlLabel(state)) ? "%"' in dashboard
     assert "stroke-dasharray" in dashboard
+
+
+def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -> None:
+    """The bundled compatibility card follows the native entity model."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "poolside-dashboard requires mode_entity" in dashboard
+    assert '"fan", "climate"' in dashboard
+    assert "fan-percentage" in dashboard
+    assert "mdi:thermometer-water" in dashboard
+    assert "Water temperature, pH, and chlorine (normalized)" in dashboard

@@ -44,14 +44,23 @@ card.
 Copy [`docs/native-dashboard.yaml`](docs/native-dashboard.yaml) into a new manual dashboard,
 then replace each example entity ID with the matching discovered entity from **Settings →
 Devices & services → Poolside**. Omit a card when that entity is not discovered or is disabled.
-Do not use the legacy `custom:poolside-dashboard` card; remove its dashboard resource if it was
-previously added.
+The integration registers both bundled cards locally during startup, so no separate frontend
+repository or HACS card installation is required. Existing `custom:poolside-dashboard` cards
+will load again; the native template remains the recommended path for new dashboards.
+
+Home Assistant intentionally does not let an integration silently rewrite a user's Lovelace
+storage dashboard. The integration therefore does not overwrite an existing Overview view;
+copying the supplied template is the safe one-time dashboard step.
 
 ### Optional body selector card
 
 The integration serves its bundled Lovelace card locally at
-`/poolside/poolside-body-selector.js`. Open **Settings → Dashboards → ⋮ → Resources → Add
-resource**, use this URL, and select **JavaScript module**:
+`/poolside/poolside-body-selector.js` and registers it automatically. After a restart, reload
+the browser with **Ctrl/Cmd+Shift+R** and add **Custom: Poolside Body Selector** from the card
+picker.
+
+For older Home Assistant builds that do not show automatically registered resources, add this
+URL under **Settings → Dashboards → ⋮ → Resources → Add resource** as a JavaScript module:
 
 ```text
 /poolside/poolside-body-selector.js

@@ -37,10 +37,13 @@ async def _async_register_frontend_assets(hass: HomeAssistant) -> None:
             [StaticPathConfig("/poolside", str(www), cache_headers=False)]
         )
     # Home Assistant may initialize the frontend registry after integrations.
-    # The body selector is the only custom card; all homeowner controls use
-    # native Home Assistant entity cards.
+    # Both bundled cards are local and need no HACS frontend dependency. The
+    # body selector is the small custom control; the dashboard card remains
+    # available for existing dashboards while native cards are recommended for
+    # new views.
     hass.data.setdefault("frontend_extra_module_url", set())
     add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+    add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
 
 
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
