@@ -52,9 +52,15 @@ class PoolsideDashboard extends HTMLElement {
     });
     const selected = (mode.state || "Off").toLowerCase();
     const discovered = this._discoverEntities();
-    const shared = this.config.shared_entities?.length ? this.config.shared_entities : discovered.shared;
-    const pool = this.config.pool_entities?.length ? this.config.pool_entities : discovered.pool;
-    const spa = this.config.spa_entities?.length ? this.config.spa_entities : discovered.spa;
+    const configured = (key, fallback) => {
+      const ids = Array.isArray(this.config[key])
+        ? this.config[key].filter((entityId) => this._hass.states[entityId])
+        : [];
+      return ids.length ? ids : fallback;
+    };
+    const shared = configured("shared_entities", discovered.shared);
+    const pool = configured("pool_entities", discovered.pool);
+    const spa = configured("spa_entities", discovered.spa);
     this._renderEntities("shared", shared);
     this._renderEntities("pool", selected === "pool" ? pool : []);
     this._renderEntities("spa", selected === "spa" ? spa : []);
