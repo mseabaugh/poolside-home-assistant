@@ -118,8 +118,9 @@ class PoolsideDashboard extends HTMLElement {
   }
 
   _renderOverview(mode, activeControls, allControls, telemetry) {
-    const findTelemetry = (pattern, fallback = "—") => {
-      const state = telemetry.map((id) => this._hass.states[id]).find((item) => item && pattern.test(this._identity(item)) && !this._unavailable(item));
+    const findTelemetry = (patterns, fallback = "—") => {
+      const candidates = telemetry.map((id) => this._hass.states[id]).filter((item) => item && !this._unavailable(item));
+      const state = patterns.map((pattern) => candidates.find((item) => pattern.test(this._identity(item)))).find(Boolean);
       return state ? this._stateValue(state) : fallback;
     };
     const findControl = (pattern) => allControls.map((id) => this._hass.states[id]).find((item) => item && pattern.test(this._identity(item)));
@@ -129,8 +130,8 @@ class PoolsideDashboard extends HTMLElement {
     const features = allControls.map((id) => this._hass.states[id]).filter((item) => item && /(bubbler|blower|cleaner|spill|jets)/.test(this._identity(item)));
     const stats = [
       ["mdi:pool", "Mode", mode.state],
-      ["mdi:thermometer-water", "Water", findTelemetry(/water.*temp|temp.*water|temperature/)],
-      ["mdi:fan", "Circulation", circulation ? this._status(circulation) : findTelemetry(/rpm|speed|flow/)],
+      ["mdi:thermometer-water", "Water", findTelemetry([/water.*thermistor/, /water.*temp/, /temperature/])],
+      ["mdi:fan", "Circulation", circulation ? this._status(circulation) : findTelemetry([/primary.*pump.*rpm/, /pump.*rpm/, /flow/])],
       ["mdi:fire", "Heating", heater ? this._status(heater) : "—"],
       ["mdi:lightbulb-group", "Lights", `${lights.filter((item) => item.state === "on").length}/${lights.length}`],
       ["mdi:water", "Features", `${features.filter((item) => item.state === "on").length}/${features.length}`],
@@ -164,8 +165,8 @@ class PoolsideDashboard extends HTMLElement {
   }
 
   _renderAdvanced(telemetry) {
-    const states = telemetry.map((id) => this._hass.states[id]).filter(Boolean);
-    const gaugeStates = states.filter((state) => /(pressure|rpm|speed|flow|temperature)/.test(this._identity(state))).slice(0, 6);
+    const states = telemetry.map((id) => this._hass.states[id]).filter((state) => state && this._isUsefulTelemetry(state));
+    const gaugeStates = states.filter((state) => this._isGaugeTelemetry(state)).sort((left, right) => this._gaugePriority(left) - this._gaugePriority(right)).slice(0, 6);
     this.shadowRoot.querySelector(".gauge-grid").innerHTML = gaugeStates.length ? gaugeStates.map((state) => this._gauge(state)).join("") : '<div class="empty">No live pressure, RPM, flow, or temperature telemetry is currently available.</div>';
     this.shadowRoot.querySelector(".diagnostics").innerHTML = states.length ? states.map((state) => `<div class="diagnostic-row"><span>${this._escape(state.attributes.friendly_name || "Telemetry")}</span><span>${this._escape(this._stateValue(state))}</span></div>`).join("") : '<p class="hint">No controller telemetry has been reported.</p>';
   }
@@ -173,12 +174,12 @@ class PoolsideDashboard extends HTMLElement {
   _gauge(state) {
     const identity = this._identity(state);
     const value = Number(state.state);
-    const [min, max] = state.attributes.min !== undefined && state.attributes.max !== undefined ? [Number(state.attributes.min), Number(state.attributes.max)] : identity.includes("pressure") ? [0, 50] : identity.includes("rpm") || identity.includes("speed") ? [0, 3450] : identity.includes("flow") ? [0, 150] : [32, 110];
+    const [min, max] = state.attributes.min !== undefined && state.attributes.max !== undefined ? [Number(state.attributes.min), Number(state.attributes.max)] : identity.includes("pressure") ? [0, 50] : identity.includes("speedpercent") ? [0, 100] : identity.includes("rpm") ? [0, 3450] : identity.includes("flow") ? [0, 150] : [32, 150];
     const percent = Number.isFinite(value) ? Math.max(0, Math.min(100, ((value - min) / Math.max(1, max - min)) * 100)) : 0;
     const circumference = 282.7;
     const offset = circumference * (1 - percent / 100);
-    const label = state.attributes.friendly_name || "Telemetry";
-    const unit = state.attributes.unit_of_measurement || "";
+    const label = this._telemetryLabel(state);
+    const unit = this._unitFor(state);
     return `<div class="gauge"><svg viewBox="0 0 112 112" aria-label="${this._escape(label)}"><circle class="track" cx="56" cy="56" r="45"></circle><circle class="progress" cx="56" cy="56" r="45" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle></svg><div class="gauge-value"><strong>${Number.isFinite(value) ? this._escape(value) : "—"}</strong><small>${this._escape(unit)}</small></div><div class="gauge-label">${this._escape(label)}</div></div>`;
   }
 
@@ -260,7 +261,38 @@ class PoolsideDashboard extends HTMLElement {
   _identity(state) { return `${state?.attributes?.friendly_name || ""} ${state?.entity_id || ""}`.toLowerCase(); }
   _unavailable(state) { return !state || ["unavailable", "unknown"].includes(state.state); }
   _status(state) { return this._unavailable(state) ? "Unavailable" : state.state === "on" ? "On" : state.state === "off" ? "Off" : this._stateValue(state); }
-  _stateValue(state) { return `${state.state} ${state.attributes.unit_of_measurement || ""}`.trim(); }
+  _stateValue(state) { return `${state.state} ${this._unitFor(state)}`.trim(); }
+  _unitFor(state) {
+    if (state.attributes.unit_of_measurement) return state.attributes.unit_of_measurement;
+    const identity = this._identity(state);
+    if (/pressurepsi/.test(identity)) return "psi";
+    if (/rpm/.test(identity)) return "rpm";
+    if (/speedpercent/.test(identity)) return "%";
+    if (/temperaturef|thermistor.*temperature/.test(identity)) return "°F";
+    return "";
+  }
+  _telemetryLabel(state) {
+    return String(state.attributes.friendly_name || "Telemetry")
+      .replace(/^Poolside\s+/i, "")
+      .replace(/([a-z])([A-Z])/g, "$1 $2");
+  }
+  _isUsefulTelemetry(state) {
+    const identity = this._identity(state);
+    return /(pressurepsi|winterized|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow|fault|online)/.test(identity);
+  }
+  _isGaugeTelemetry(state) {
+    const identity = this._identity(state);
+    return !/winterized|fault|online/.test(identity) && /(pressurepsi|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow)/.test(identity);
+  }
+  _gaugePriority(state) {
+    const identity = this._identity(state);
+    if (/pressurepsi/.test(identity)) return 1;
+    if (/water.*thermistor/.test(identity)) return 2;
+    if (/primary.*pump.*rpm/.test(identity)) return 3;
+    if (/feature.*pump.*rpm/.test(identity)) return 4;
+    if (/thermistor/.test(identity)) return 5;
+    return 6;
+  }
   _iconFor(state, id) {
     const identity = this._identity(state);
     if (identity.includes("heater")) return "mdi:thermometer-water";
