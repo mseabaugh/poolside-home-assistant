@@ -449,7 +449,14 @@ def discover_sites(payload: Any) -> PoolsideData:
         ]
 
         equipment_rows: list[Mapping[str, Any]] = []
-        for key in ("EquipmentItems", "Equipment", "Devices", "HardwareDevices"):
+        for key in (
+            "EquipmentItems",
+            "Equipment",
+            "Devices",
+            "HardwareDevices",
+            "PhysicalDevices",
+            "Hardware",
+        ):
             equipment_rows.extend(_mapping_list(site_raw, key))
         equipment = [
             Equipment(
@@ -506,24 +513,29 @@ def apply_runtime(site: Site, states_payload: Any, desired_payload: Any) -> Site
         # Site.getStates uses `item` as the equipment UUID and `name` as the
         # telemetry key, while older responses use entityUuid/item.
         legacy_entity_uuid = row.get("item")
+        normalized_row = row
         if (
             "entityUuid" not in row
             and isinstance(legacy_entity_uuid, str)
             and isinstance(row.get("name"), str)
         ):
-            row = {**row, "entityUuid": legacy_entity_uuid, "item": row["name"]}
+            normalized_row = {**row, "entityUuid": legacy_entity_uuid, "item": row["name"]}
         try:
-            entity_uuid = _required_identifier(row, "state")
+            entity_uuid = _required_identifier(normalized_row, "state")
         except ProtocolError:
             continue
-        key_value = row.get("item", row.get("name", row.get("StateName")))
-        if isinstance(key_value, str) and "state" in row:
-            state_by_entity.setdefault(entity_uuid, {})[key_value] = parse_state(row["state"])
+        key_value = normalized_row.get(
+            "item", normalized_row.get("name", normalized_row.get("StateName"))
+        )
+        if isinstance(key_value, str) and "state" in normalized_row:
+            state_by_entity.setdefault(entity_uuid, {})[key_value] = parse_state(
+                normalized_row["state"]
+            )
         else:
             state_by_entity.setdefault(entity_uuid, {}).update(
                 {
                     str(key): parse_state(value)
-                    for key, value in row.items()
+                    for key, value in normalized_row.items()
                     if key not in {"UUID", "uuid", "entityUuid", "siteUuid", "siteId"}
                 }
             )

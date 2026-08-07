@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 
 from . import PoolsideConfigEntry
@@ -55,6 +56,7 @@ class PoolsideBinarySensor(PoolsideEntity, BinarySensorEntity):
         equipment = coordinator.site(site_uuid).equipment[equipment_uuid]
         self._attr_unique_id = f"{equipment_uuid}_{state_key}"
         self._attr_name = f"{equipment.name} {state_key}"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def is_on(self) -> bool | None:
