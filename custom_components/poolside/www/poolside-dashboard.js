@@ -31,6 +31,7 @@ class PoolsideDashboard extends HTMLElement {
         .toggle.active { background:var(--primary-color); color:var(--text-primary-color); border-color:var(--primary-color); }
         .number { width:42%; accent-color:var(--primary-color); }
         .color { width:34px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:6px; background:transparent; }
+        .effect { max-width:140px; padding:5px; border:1px solid var(--divider-color); border-radius:6px; background:var(--card-background-color); color:var(--primary-text-color); }
         summary { cursor:pointer; font-weight:600; }
         .notice { color:var(--warning-color); font-size:.78rem; margin-top:12px; }
       </style>
@@ -137,13 +138,15 @@ class PoolsideDashboard extends HTMLElement {
         const rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color : [0, 153, 204];
         const hex = `#${rgb.map((value) => Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, "0")).join("")}`;
         const supportsColor = domain === "light" && (Array.isArray(attrs.rgb_color) || Array.isArray(attrs.hs_color) || (Array.isArray(attrs.supported_color_modes) && attrs.supported_color_modes.some((mode) => ["rgb", "hs", "xy"].includes(mode))));
+        const effects = domain === "light" && Array.isArray(attrs.effect_list) ? attrs.effect_list : [];
         const brightness = hasBrightness
           ? `<input class="number light-brightness" type="range" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${label} brightness" ${unavailable ? "disabled" : ""}>`
           : "";
         const color = supportsColor
           ? `<input class="color light-color" type="color" value="${hex}" data-entity="${entityId}" aria-label="${label} color" ${unavailable ? "disabled" : ""}>`
           : "";
-        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions">${brightness}${color}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${unavailable ? "disabled" : ""}>${active ? "On" : "Off"}</button></div></div>`;
+        const effect = effects.length ? `<select class="effect light-effect" data-entity="${entityId}" aria-label="${label} effect" ${unavailable ? "disabled" : ""}><option value="">Effect</option>${effects.map((item) => `<option value="${this._escape(item)}" ${item === attrs.effect ? "selected" : ""}>${this._escape(item)}</option>`).join("")}</select>` : "";
+        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions">${brightness}${color}${effect}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${unavailable ? "disabled" : ""}>${active ? "On" : "Off"}</button></div></div>`;
       }
       if (entityId.startsWith("number.") && state.attributes.min !== undefined) {
         const value = Number(state.state);
@@ -158,6 +161,9 @@ class PoolsideDashboard extends HTMLElement {
       const value = input.value.replace("#", "");
       const rgb = [0, 2, 4].map((offset) => parseInt(value.slice(offset, offset + 2), 16));
       this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, rgb_color: rgb });
+    }));
+    section.querySelectorAll(".light-effect").forEach((input) => input.addEventListener("change", () => {
+      if (input.value) this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, effect: input.value });
     }));
   }
 
