@@ -59,8 +59,14 @@ class PoolsideDashboard extends HTMLElement {
       return ids.length ? ids : fallback;
     };
     const shared = configured("shared_entities", discovered.shared);
-    const pool = configured("pool_entities", discovered.pool);
-    const spa = configured("spa_entities", discovered.spa);
+    let pool = configured("pool_entities", discovered.pool);
+    let spa = configured("spa_entities", discovered.spa);
+    // Older entity naming may omit the body name. Keep the active-body view
+    // useful by showing discovered safe controls in the selected section.
+    if (!pool.length && !spa.length && selected !== "off") {
+      if (selected === "pool") pool = shared;
+      if (selected === "spa") spa = shared;
+    }
     this._renderEntities("shared", shared);
     this._renderEntities("pool", selected === "pool" ? pool : []);
     this._renderEntities("spa", selected === "spa" ? spa : []);
