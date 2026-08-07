@@ -51,3 +51,24 @@ def test_dashboard_provides_a_safe_all_lights_group_control() -> None:
     assert "all-lights-preset" in dashboard
     assert 'id.startsWith("light.") && this._hass.states[id]' in dashboard
     assert 'callService("light", allOn ? "turn_off" : "turn_on"' in dashboard
+
+
+def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
+    """The homeowner view must avoid empty sections and raw controller precision."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "Water chemistry" in dashboard
+    assert "Next schedule" in dashboard
+    assert "Running now" in dashboard
+    assert 'toFixed(2)' in dashboard
+    assert 'if (chemistry.length)' in dashboard
+    assert 'if (nextSchedule)' in dashboard
+    assert 'return state && !this._unavailable(state) && state.state === "on"' in dashboard
+    assert 'details class="more"' not in dashboard
+    assert "Daily controls" not in dashboard

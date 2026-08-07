@@ -26,7 +26,7 @@ class PoolsideDashboard extends HTMLElement {
         .stat-value { display:block; margin-top:8px; font-size:1.12rem; font-weight:600; }
         .section { border-top:1px solid var(--divider-color); margin-top:18px; padding-top:15px; }
         .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-        .essentials { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+        .home-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; margin-top:14px; }
         .panel { border:1px solid var(--divider-color); border-radius:12px; padding:12px; }
         .panel-title { display:flex; align-items:center; gap:8px; font-weight:600; margin-bottom:7px; }
         .panel .row + .row { border-top:1px solid var(--divider-color); }
@@ -44,6 +44,11 @@ class PoolsideDashboard extends HTMLElement {
         .color-preset[aria-pressed="true"] { outline:2px solid var(--primary-color); outline-offset:2px; }
         .effect { max-width:105px; border:1px solid var(--divider-color); border-radius:7px; padding:4px; color:var(--primary-text-color); background:var(--card-background-color); }
         .features { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+        .metric-list { margin:0; padding:0; list-style:none; }
+        .metric-list li { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid var(--divider-color); }
+        .metric-list li:first-child { border-top:0; }
+        .metric-list strong { text-align:right; }
+        .schedule-time { color:var(--secondary-text-color); font-size:.86rem; margin-top:5px; }
         .feature { border:1px solid var(--divider-color); border-radius:10px; padding:8px 10px; }
         .empty { padding:18px; text-align:center; color:var(--secondary-text-color); border:1px dashed var(--divider-color); border-radius:12px; }
         details { border-top:1px solid var(--divider-color); margin-top:18px; padding-top:14px; }
@@ -66,8 +71,7 @@ class PoolsideDashboard extends HTMLElement {
         <p class="subtitle">Safe controls follow the confirmed Poolside cloud state.</p>
         <div class="mode-rail"></div>
         <div class="overview"></div>
-        <section class="daily section"><div class="section-head"><h3>Daily controls</h3></div><div class="daily-content"></div></section>
-        <details class="more"><summary>More controls</summary><div class="more-content"></div></details>
+        <section class="home section"><div class="home-content"></div></section>
         <details class="advanced"><summary>Advanced monitoring</summary><p class="hint">Live read-only controller telemetry. Physical equipment and valves are never controlled here.</p><div class="gauge-grid"></div><div class="diagnostics"></div></details>
       </ha-card>`;
     this._render();
@@ -98,18 +102,22 @@ class PoolsideDashboard extends HTMLElement {
     const allControls = [...new Set([...pool, ...spa])];
     const selected = String(mode.state || "Off").toLowerCase();
     const activeControls = selected === "pool" ? pool : selected === "spa" ? spa : [];
+    const liveLights = allControls.filter((id) => id.startsWith("light.") && !this._unavailable(this._hass.states[id]));
+    const running = activeControls.filter((id) => {
+      const state = this._hass.states[id];
+      return state && !this._unavailable(state) && state.state === "on";
+    });
+    const homeData = this._discoverHomeData();
     this._renderModes(mode, modeEntity);
-    this._renderOverview(mode, activeControls, allControls, diagnostics);
-    this._renderDaily(mode, activeControls, lights);
-    this._renderMore(activeControls);
+    this._renderOverview(mode, allControls, liveLights, diagnostics);
+    this._renderHome(mode, liveLights, running, homeData.chemistry, homeData.schedules);
     this._renderAdvanced(diagnostics);
   }
 
   _renderUnavailable() {
     this.shadowRoot.querySelector(".mode-rail").innerHTML = "";
     this.shadowRoot.querySelector(".overview").innerHTML = '<div class="empty">Poolside is reconnecting. The active-body selector is unavailable.</div>';
-    this.shadowRoot.querySelector(".daily-content").innerHTML = "";
-    this.shadowRoot.querySelector(".more-content").innerHTML = "";
+    this.shadowRoot.querySelector(".home-content").innerHTML = "";
   }
 
   _renderModes(mode, modeEntity) {
@@ -124,7 +132,7 @@ class PoolsideDashboard extends HTMLElement {
     });
   }
 
-  _renderOverview(mode, activeControls, allControls, telemetry) {
+  _renderOverview(mode, allControls, liveLights, telemetry) {
     const findTelemetry = (patterns, fallback = "—") => {
       const candidates = telemetry.map((id) => this._hass.states[id]).filter((item) => item && !this._unavailable(item));
       const state = patterns.map((pattern) => candidates.find((item) => pattern.test(this._identity(item)))).find(Boolean);
@@ -133,43 +141,28 @@ class PoolsideDashboard extends HTMLElement {
     const findControl = (pattern) => allControls.map((id) => this._hass.states[id]).find((item) => item && pattern.test(this._identity(item)));
     const heater = findControl(/heater/);
     const circulation = findControl(/filter|pump|circulation/);
-    const lights = allControls.filter((id) => id.startsWith("light.")).map((id) => this._hass.states[id]).filter(Boolean);
     const features = allControls.map((id) => this._hass.states[id]).filter((item) => item && /(bubbler|blower|cleaner|spill|jets)/.test(this._identity(item)));
-    const stats = [
-      ["mdi:pool", "Mode", mode.state],
-      ["mdi:thermometer-water", "Water", findTelemetry([/water.*thermistor/, /water.*temp/, /temperature/])],
-      ["mdi:fan", "Circulation", circulation ? this._status(circulation) : findTelemetry([/primary.*pump.*rpm/, /pump.*rpm/, /flow/])],
-      ["mdi:fire", "Heating", heater ? this._status(heater) : "—"],
-      ["mdi:lightbulb-group", "Lights", `${lights.filter((item) => item.state === "on").length}/${lights.length}`],
-      ["mdi:water", "Features", `${features.filter((item) => item.state === "on").length}/${features.length}`],
-    ];
+    const water = findTelemetry([/water.*thermistor/, /water.*temp/, /temperature/], "");
+    const stats = [["mdi:pool", "Mode", mode.state]];
+    if (water) stats.push(["mdi:thermometer-water", "Water", water]);
+    if (circulation && circulation.state === "on") stats.push(["mdi:fan", "Circulation", "Running"]);
+    if (heater && heater.state === "on") stats.push(["mdi:fire", "Heating", "On"]);
+    if (liveLights.length) stats.push(["mdi:lightbulb-group", "Lights", `${liveLights.filter((id) => this._hass.states[id]?.state === "on").length}/${liveLights.length}`]);
+    if (features.some((item) => item.state === "on")) stats.push(["mdi:water", "Features", `${features.filter((item) => item.state === "on").length} active`]);
     this.shadowRoot.querySelector(".overview").innerHTML = stats.map(([icon, label, value]) => `<div class="stat"><span class="stat-label"><ha-icon icon="${icon}"></ha-icon>${this._escape(label)}</span><span class="stat-value">${this._escape(value)}</span></div>`).join("");
   }
 
-  _renderDaily(mode, controls, allLights) {
-    const target = this.shadowRoot.querySelector(".daily-content");
-    const allLightsControl = this._allLightsControl(allLights);
-    if (String(mode.state).toLowerCase() === "off") {
-      target.innerHTML = `${allLightsControl}<div class="empty"><strong>Select Pool or Spa to control that body.</strong><br><span class="hint">This keeps connected water paths exclusive and lets Poolside coordinate valves safely.</span></div>`;
-      this._wireControls(target);
-      return;
-    }
-    const groups = this._groups(controls);
-    const panels = [
-      ["mdi:fire", "Heating", groups.heating],
-      ["mdi:fan", "Circulation", groups.circulation],
-      ["mdi:lightbulb-group", "Lighting", groups.lights],
-    ].filter(([, , ids]) => ids.length);
-    const essentials = panels.map(([icon, title, ids]) => `<div class="panel"><div class="panel-title"><ha-icon icon="${icon}"></ha-icon>${title}</div>${ids.map((id) => this._control(id)).join("")}</div>`).join("");
-    const featureRows = groups.features.map((id) => `<div class="feature">${this._control(id)}</div>`).join("");
-    target.innerHTML = `${allLightsControl}<p class="hint">${this._escape(`Controlling ${mode.state}. Changes are confirmed by Poolside before the display updates.`)}</p><div class="essentials">${essentials || '<div class="empty">No daily controls were discovered for this body.</div>'}</div>${featureRows ? `<section class="section"><div class="section-head"><h3>Water features</h3></div><div class="features">${featureRows}</div></section>` : ""}`;
-    this._wireControls(target);
-  }
-
-  _renderMore(controls) {
-    const target = this.shadowRoot.querySelector(".more-content");
-    const remaining = this._groups(controls).other;
-    target.innerHTML = remaining.length ? remaining.map((id) => this._control(id)).join("") : '<p class="hint">No additional safe controls are available for the selected body.</p>';
+  _renderHome(mode, allLights, running, chemistry, schedules) {
+    const target = this.shadowRoot.querySelector(".home-content");
+    const panels = [];
+    const lights = this._allLightsControl(allLights);
+    if (lights) panels.push(lights);
+    if (running.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:play-circle-outline"></ha-icon>Running now</div>${running.map((id) => this._control(id)).join("")}</div>`);
+    if (chemistry.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:flask-outline"></ha-icon>Water chemistry</div><ul class="metric-list">${chemistry.map((state) => `<li><span>${this._escape(this._telemetryLabel(state))}</span><strong>${this._escape(this._stateValue(state))}</strong></li>`).join("")}</ul></div>`);
+    const nextSchedule = schedules[0];
+    if (nextSchedule) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:calendar-clock"></ha-icon>Next schedule</div><strong>${this._escape(nextSchedule.title)}</strong><div class="schedule-time">${this._escape(nextSchedule.time)}</div></div>`);
+    const resting = String(mode.state).toLowerCase() === "off" ? "Select Pool or Spa to start a water mode. Shared flow equipment stays protected until Poolside confirms the change." : `No Poolside equipment is currently running in ${mode.state}.`;
+    target.innerHTML = panels.length ? `<div class="home-grid">${panels.join("")}</div>` : `<div class="empty"><strong>Everything is resting.</strong><br><span class="hint">${this._escape(resting)}</span></div>`;
     this._wireControls(target);
   }
 
@@ -202,7 +195,7 @@ class PoolsideDashboard extends HTMLElement {
     const offset = circumference * (1 - percent / 100);
     const label = this._telemetryLabel(state);
     const unit = this._unitFor(state);
-    return `<div class="gauge"><svg viewBox="0 0 112 112" aria-label="${this._escape(label)}"><circle class="track" cx="56" cy="56" r="45"></circle><circle class="progress" cx="56" cy="56" r="45" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle></svg><div class="gauge-value"><strong>${Number.isFinite(value) ? this._escape(value) : "—"}</strong><small>${this._escape(unit)}</small></div><div class="gauge-label">${this._escape(label)}</div></div>`;
+    return `<div class="gauge"><svg viewBox="0 0 112 112" aria-label="${this._escape(label)}"><circle class="track" cx="56" cy="56" r="45"></circle><circle class="progress" cx="56" cy="56" r="45" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"></circle></svg><div class="gauge-value"><strong>${Number.isFinite(value) ? this._escape(this._formatNumber(value)) : "—"}</strong><small>${this._escape(unit)}</small></div><div class="gauge-label">${this._escape(label)}</div></div>`;
   }
 
   _control(entityId) {
@@ -279,6 +272,36 @@ class PoolsideDashboard extends HTMLElement {
     return result;
   }
 
+  _discoverHomeData() {
+    const chemistry = [];
+    const schedules = [];
+    Object.entries(this._hass.states).forEach(([id, state]) => {
+      const identity = this._identity(state);
+      const isPoolside = id.includes("poolside") || /^(pool|spa)\b/.test(String(state.attributes.friendly_name || "").toLowerCase());
+      if (!isPoolside || this._unavailable(state)) return;
+      if (id.startsWith("sensor.") && /(\bph\b|orp|chlorine|salt|alkalinity|calcium|stabilizer|cyanuric|chemical)/.test(identity) && this._isNumericState(state)) chemistry.push(state);
+      if (id.startsWith("calendar.") || /schedule|next.*(run|event|schedule)/.test(identity)) {
+        const schedule = this._scheduleInfo(state);
+        if (schedule) schedules.push(schedule);
+      }
+    });
+    return {
+      chemistry: chemistry.sort((left, right) => this._telemetryLabel(left).localeCompare(this._telemetryLabel(right))).slice(0, 6),
+      schedules: schedules.sort((left, right) => left.at - right.at).slice(0, 1),
+    };
+  }
+
+  _scheduleInfo(state) {
+    const attrs = state.attributes || {};
+    const source = attrs.start_time || attrs.next_event || attrs.next_run || attrs.next_run_time;
+    const at = source ? Date.parse(source) : NaN;
+    if (!Number.isFinite(at)) return null;
+    const title = attrs.message || attrs.summary || attrs.description || this._telemetryLabel(state);
+    const date = new Date(at);
+    const time = date.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    return { title, time, at };
+  }
+
   async _select(option, current, entityId) {
     if (option === current) return;
     if (current && current.toLowerCase() !== "off" && option.toLowerCase() !== "off" && !window.confirm(`Switch from ${current} to ${option}? Poolside will adjust shared valves safely.`)) return;
@@ -295,7 +318,12 @@ class PoolsideDashboard extends HTMLElement {
   _identity(state) { return `${state?.attributes?.friendly_name || ""} ${state?.entity_id || ""}`.toLowerCase(); }
   _unavailable(state) { return !state || ["unavailable", "unknown"].includes(state.state); }
   _status(state) { return this._unavailable(state) ? "Unavailable" : state.state === "on" ? "On" : state.state === "off" ? "Off" : this._stateValue(state); }
-  _stateValue(state) { return `${state.state} ${this._unitFor(state)}`.trim(); }
+  _isNumericState(state) { return Number.isFinite(Number(state?.state)); }
+  _stateValue(state) {
+    const raw = this._isNumericState(state) ? this._formatNumber(Number(state.state)) : state.state;
+    return `${raw} ${this._unitFor(state)}`.trim();
+  }
+  _formatNumber(value) { return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.0+$/, "").replace(/(\.\d)0$/, "$1"); }
   _unitFor(state) {
     if (state.attributes.unit_of_measurement) return state.attributes.unit_of_measurement;
     const identity = this._identity(state);
@@ -308,11 +336,14 @@ class PoolsideDashboard extends HTMLElement {
   _telemetryLabel(state) {
     return String(state.attributes.friendly_name || "Telemetry")
       .replace(/^Poolside\s+/i, "")
-      .replace(/([a-z])([A-Z])/g, "$1 $2");
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/\sF$/, "");
   }
   _isUsefulTelemetry(state) {
     const identity = this._identity(state);
-    return /(pressurepsi|winterized|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow|fault|online)/.test(identity);
+    if (/winterized|online/.test(identity)) return false;
+    if (/fault/.test(identity)) return !["off", "0", "false"].includes(String(state.state).toLowerCase());
+    return /(pressurepsi|pump.*(rpm|speedpercent|temperature)|thermistor.*temperature|flow)/.test(identity);
   }
   _isGaugeTelemetry(state) {
     const identity = this._identity(state);
