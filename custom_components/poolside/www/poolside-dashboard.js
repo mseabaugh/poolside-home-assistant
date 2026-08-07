@@ -65,6 +65,9 @@ class PoolsideDashboard extends HTMLElement {
         .feature-rate .slider { flex:1; width:auto; }
         .light-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
         .light-tile { border:1px solid var(--divider-color); border-radius:12px; padding:10px; text-align:center; }
+        .heater-temperature-stepper { display:grid; grid-template-columns:38px 1fr 38px; gap:7px; align-items:center; margin-top:10px; }
+        .heater-temperature-stepper button { height:35px; border:1px solid var(--divider-color); border-radius:9px; color:var(--primary-text-color); background:var(--card-background-color); font-size:21px; cursor:pointer; }
+        .heater-temperature-input { width:100%; height:35px; border:1px solid var(--divider-color); border-radius:9px; color:var(--primary-text-color); background:var(--card-background-color); text-align:center; font:600 15px inherit; }
         .light-tile .color-presets { justify-content:center; margin-top:9px; }
         .light-tile .toggle { width:52px; margin:9px auto 0; }
         .history { min-height:104px; margin-top:10px; display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:8px; }
@@ -237,9 +240,19 @@ class PoolsideDashboard extends HTMLElement {
     if (!heater && !setpoint) return "";
     const on = heater?.entity_id.startsWith("climate.") ? heater.state === "heat" : heater?.state === "on";
     const name = this._controlLabel(heater || setpoint);
-    const slider = setpoint ? this._numberInput(setpoint, "heater-setpoint") : "";
+    const temperatureEntity = setpoint || (heater?.entity_id.startsWith("climate.") ? heater : null);
+    const slider = temperatureEntity ? this._heaterTemperatureInput(temperatureEntity) : "";
     const toggle = heater ? `<button class="toggle ${on ? "active" : ""}" data-entity="${heater.entity_id}" data-climate-next="${on ? "off" : "heat"}">${on ? "On" : "Off"}</button>` : "";
     return `<div class="panel heater ${on ? "active" : ""}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
+  }
+
+  _heaterTemperatureInput(state) {
+    const climate = state.entity_id.startsWith("climate.");
+    const value = climate ? Number(state.attributes.target_temperature) : Number(state.state);
+    const min = climate ? Number(state.attributes.min_temp ?? 32) : Number(state.attributes.min ?? 32);
+    const max = climate ? Number(state.attributes.max_temp ?? 110) : Number(state.attributes.max ?? 110);
+    const entity = this._escape(state.entity_id);
+    return `<div class="heater-temperature-stepper"><button class="heater-temperature-minus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Decrease temperature">−</button><input class="heater-temperature-input" inputmode="decimal" value="${Number.isFinite(value) ? this._formatNumber(value) : min}" min="${min}" max="${max}" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="${this._escape(this._controlLabel(state))} temperature"><button class="heater-temperature-plus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Increase temperature">+</button></div><span class="value">°F · ${min}–${max} °F</span>`;
   }
 
   _featureCards(ids) {
@@ -360,6 +373,20 @@ class PoolsideDashboard extends HTMLElement {
     scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", () => this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage: Number(input.value) })));
     scope.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     scope.querySelectorAll(".native-light-slider").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
+    const adjustTemperature = (input, delta) => {
+      const state = this._hass.states[input.dataset.entity];
+      const current = input.value;
+      const min = Number(input.min || 32);
+      const max = Number(input.max || 110);
+      const value = Math.max(min, Math.min(max, Math.round((Number(current) || Number(state?.attributes?.target_temperature ?? state?.state) || 32) + delta)));
+      input.value = String(value);
+      const service = input.dataset.domain === "climate" ? "climate" : "number";
+      const data = service === "climate" ? { entity_id: input.dataset.entity, temperature: value } : { entity_id: input.dataset.entity, value };
+      this._hass.callService(service, service === "climate" ? "set_temperature" : "set_value", data);
+    };
+    scope.querySelectorAll(".heater-temperature-minus").forEach((button) => button.addEventListener("click", () => adjustTemperature(button.parentElement.querySelector(".heater-temperature-input"), -1)));
+    scope.querySelectorAll(".heater-temperature-plus").forEach((button) => button.addEventListener("click", () => adjustTemperature(button.parentElement.querySelector(".heater-temperature-input"), 1)));
+    scope.querySelectorAll(".heater-temperature-input").forEach((input) => input.addEventListener("change", () => adjustTemperature(input, 0)));
     scope.querySelectorAll(".light-color").forEach((input) => input.addEventListener("change", () => {
       const raw = input.value.slice(1);
       this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, rgb_color: [0, 2, 4].map((offset) => parseInt(raw.slice(offset, offset + 2), 16)) });
