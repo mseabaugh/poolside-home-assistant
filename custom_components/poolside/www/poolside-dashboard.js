@@ -19,6 +19,10 @@ class PoolsideDashboard extends HTMLElement {
         .section[hidden] { display:none; }
         .section h3 { margin:0 0 4px; font-size:.95rem; }
         .row { display:flex; justify-content:space-between; align-items:center; min-height:38px; }
+        .control-label { display:flex; align-items:center; gap:10px; min-width:0; }
+        .control-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        ha-icon { color:var(--state-icon-color); }
+        .control-actions { display:flex; align-items:center; gap:12px; margin-left:12px; }
         .toggle { flex:0 0 auto; min-width:58px; padding:6px 10px; border:1px solid var(--divider-color); background:var(--card-background-color); color:var(--primary-text-color); }
         .toggle.active { background:var(--primary-color); color:var(--text-primary-color); border-color:var(--primary-color); }
         .number { width:42%; accent-color:var(--primary-color); }
@@ -86,18 +90,38 @@ class PoolsideDashboard extends HTMLElement {
     section.querySelector(".entity-rows").innerHTML = entityIds.map((entityId) => {
       const state = this._hass.states[entityId];
       if (!state) return "";
+      const domain = entityId.split(".")[0];
       const label = this._escape(state.attributes.friendly_name || entityId);
-      if (["switch", "light"].includes(entityId.split(".")[0])) {
+      const icon = this._iconFor(state, entityId);
+      const unavailable = ["unavailable", "unknown"].includes(state.state);
+      if (["switch", "light"].includes(domain)) {
         const active = state.state === "on";
-        return `<div class="row"><span>${label}</span><button class="toggle ${active ? "active" : ""}" data-entity="${entityId}">${active ? "On" : "Off"}</button></div>`;
+        const brightness = domain === "light" && state.attributes.brightness !== undefined
+          ? `<input class="number light-brightness" type="range" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${label} brightness" ${unavailable ? "disabled" : ""}>`
+          : "";
+        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions">${brightness}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${unavailable ? "disabled" : ""}>${active ? "On" : "Off"}</button></div></div>`;
       }
       if (entityId.startsWith("number.") && state.attributes.min !== undefined) {
-        return `<div class="row"><span>${label}</span><input class="number" type="range" min="${state.attributes.min}" max="${state.attributes.max}" step="${state.attributes.step || 1}" value="${state.state}" data-entity="${entityId}"></div>`;
+        const value = Number(state.state);
+        return `<div class="row"><div class="control-label"><ha-icon icon="${icon}"></ha-icon><span>${label}</span></div><div class="control-actions"><input class="number" type="range" min="${state.attributes.min}" max="${state.attributes.max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : state.attributes.min}" data-entity="${entityId}" aria-label="${label}" ${unavailable ? "disabled" : ""}><span>${Number.isFinite(value) ? this._escape(`${value} ${state.attributes.unit_of_measurement || ""}`) : "—"}</span></div></div>`;
       }
       return `<div class="row"><span>${label}</span><span>${this._escape(`${state.state} ${state.attributes.unit_of_measurement || ""}`)}</span></div>`;
     }).join("");
     section.querySelectorAll(".toggle").forEach((button) => button.addEventListener("click", () => this._hass.callService(button.dataset.entity.startsWith("light.") ? "light" : "switch", "toggle", { entity_id: button.dataset.entity })));
-    section.querySelectorAll(".number").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
+    section.querySelectorAll(".number:not(.light-brightness)").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
+    section.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
+  }
+
+  _iconFor(state, entityId) {
+    const identity = `${state.attributes.friendly_name || ""} ${entityId}`.toLowerCase();
+    if (identity.includes("heater")) return "mdi:thermometer-water";
+    if (identity.includes("filter")) return "mdi:air-filter";
+    if (identity.includes("cleaner")) return "mdi:robot-vacuum";
+    if (identity.includes("blower") || identity.includes("pump")) return "mdi:fan";
+    if (identity.includes("bubbler") || identity.includes("spill") || identity.includes("jets")) return "mdi:water";
+    if (identity.includes("strip") || entityId.startsWith("light.")) return "mdi:lightbulb";
+    if (entityId.startsWith("number.")) return "mdi:tune-vertical";
+    return "mdi:toggle-switch-outline";
   }
 
   _renderDiagnostics(entityIds) {
