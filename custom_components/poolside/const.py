@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "poolside"
 NAME: Final = "Poolside"
-VERSION: Final = "0.1.30"
+VERSION: Final = "0.1.31"
 
 API_URL: Final = "https://api.poolside.cloud/api/jsonrpc/v1"
 WS_URL: Final = "wss://gateway.poolside.cloud/websocket"
@@ -22,6 +22,8 @@ PLATFORMS: Final = (
     "binary_sensor",
     "button",
     "calendar",
+    "climate",
+    "fan",
     "light",
     "number",
     "select",

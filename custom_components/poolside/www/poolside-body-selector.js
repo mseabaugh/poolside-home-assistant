@@ -203,10 +203,3 @@ if (!window.customCards.some((card) => card.type === "poolside-body-selector")) 
     preview: true,
   });
 }
-
-// Keep the dashboard card available anywhere the original Poolside resource
-// is already registered. This avoids requiring a second manual Lovelace
-// resource entry after upgrading the integration.
-if (!customElements.get("poolside-dashboard")) {
-  import("/poolside/poolside-dashboard.js").catch(() => {});
-}

@@ -47,11 +47,11 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     await _setup(hass, config_entry, fake_client, monkeypatch)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, config_entry.entry_id)
-    assert len(entries) == 16
+    assert len(entries) == 15
     assert _entity_id(hass, "light", "light-one")
     assert _entity_id(hass, "light", "light-combined")
     assert _entity_id(hass, "switch", "filter-one")
-    assert _entity_id(hass, "switch", "heat-one")
+    assert registry.async_get_entity_id("switch", DOMAIN, "heat-one") is None
     assert er.async_get(hass).async_get_entity_id("switch", DOMAIN, "jets-restricted") is None
     assert _entity_id(hass, "number", "filter-one_power_level")
     assert _entity_id(hass, "button", "theme-calm_activate")
@@ -59,7 +59,7 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     assert _entity_id(hass, "calendar", "site-alpha_schedule")
     assert _entity_id(hass, "sensor", "pump-one_RPM")
     assert _entity_id(hass, "binary_sensor", "pump-one_Online")
-    assert registry.async_get_entity_id("climate", DOMAIN, "heat-one") is None
+    assert _entity_id(hass, "climate", "heat-one_climate")
 
     diagnostics = await async_get_config_entry_diagnostics(hass, config_entry)
     assert diagnostics["site_count"] == 1
@@ -105,6 +105,14 @@ async def test_entity_services_reach_safe_transport_and_reconcile(
             },
         ),
         (
+            "climate",
+            "set_temperature",
+            {
+                "entity_id": _entity_id(hass, "climate", "heat-one_climate"),
+                "temperature": 29.444444,
+            },
+        ),
+        (
             "button",
             "press",
             {"entity_id": _entity_id(hass, "button", "theme-calm_activate")},
@@ -119,7 +127,7 @@ async def test_entity_services_reach_safe_transport_and_reconcile(
         await hass.services.async_call(domain, service, data, blocking=True)
 
     methods = [method for method, _params in fake_transport.calls]
-    assert methods.count("Site.setDesiredState2") == 3
+    assert methods.count("Site.setDesiredState2") == 4
     assert methods.count("Site.setTheme") == 2
     light_write = next(
         params

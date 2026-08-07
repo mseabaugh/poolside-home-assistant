@@ -53,7 +53,12 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSwitch]:
     """Build switches for allow-listed Control classifications."""
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
-            if control.available and _safe_binary(control):
+            if (
+                control.available
+                and _safe_binary(control)
+                and not (control.is_blower and control.supports_percentage)
+                and not control.supports_temperature_setpoint
+            ):
                 yield PoolsideSwitch(coordinator, site.uuid, control.uuid)
 
 

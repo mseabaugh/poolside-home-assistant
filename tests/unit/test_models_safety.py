@@ -56,6 +56,8 @@ def test_discovery_and_runtime_merge(
     assert not merged.controls["jets-restricted"].available
     assert merged.controls["jets-restricted"].disabled_reasons == ("synthetic-reason",)
     assert not merged.controls["heat-one"].is_light
+    assert merged.controls["heat-one"].supports_temperature_setpoint
+    assert not merged.controls["filter-one"].is_blower
 
 
 def test_runtime_merge_accepts_installer_style_equipment_telemetry(
@@ -297,9 +299,7 @@ def test_safety_policy_authorizes_only_confirmed_targets_and_fields(
         policy.authorize_control(site, "pump-one", {"Status": "ON"})
     with pytest.raises(RestrictedControlError):
         policy.authorize_control(site, "jets-restricted", {"Status": "ON"})
-    installer = replace(
-        site.controls["filter-one"], raw={"Type": "Filter", "InstallerMode": True}
-    )
+    installer = replace(site.controls["filter-one"], raw={"Type": "Filter", "InstallerMode": True})
     installer_site = replace(site, controls={**site.controls, "filter-one": installer})
     assert installer.installer_only
     assert not installer.available

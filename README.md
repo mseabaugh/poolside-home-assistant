@@ -33,6 +33,20 @@ until their exact protocols and concurrency behavior are confirmed.
 5. Open **Settings → Devices & services → Add integration → Poolside**.
 6. Enter your Poolside email and password.
 
+### Native homeowner dashboard
+
+Use Home Assistant's native cards for all ordinary controls. Poolside publishes a native
+**Light** entity for lighting, a native **Fan** entity for every verified variable-speed
+blower, a native **Climate** entity for every heater with a confirmed setpoint, read-only
+telemetry sensors, and a native Calendar. Only the exclusive pool/spa selector needs a custom
+card.
+
+Copy [`docs/native-dashboard.yaml`](docs/native-dashboard.yaml) into a new manual dashboard,
+then replace each example entity ID with the matching discovered entity from **Settings →
+Devices & services → Poolside**. Omit a card when that entity is not discovered or is disabled.
+Do not use the legacy `custom:poolside-dashboard` card; remove its dashboard resource if it was
+previously added.
+
 ### Optional body selector card
 
 The integration serves its bundled Lovelace card locally at

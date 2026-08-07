@@ -1,0 +1,69 @@
+title: Poolside
+views:
+  - title: Poolside
+    path: poolside
+    icon: mdi:pool
+    cards:
+      # The only custom element: HA has no native exclusive multi-body selector.
+      - type: custom:poolside-body-selector
+        entity: select.poolside_active_body
+        name: Active body
+
+      - type: grid
+        title: Spa controls
+        columns: 2
+        square: false
+        cards:
+          # Use each entity only when it is discovered for this installation.
+          - type: thermostat
+            entity: climate.poolside_spa_heater
+          - type: tile
+            entity: fan.poolside_spa_blower
+            features:
+              - type: fan-speed
+            vertical: false
+          - type: tile
+            entity: light.poolside_spa_lights
+            features:
+              - type: light-brightness
+              - type: light-color-temp
+            vertical: false
+          - type: tile
+            entity: switch.poolside_spa_jets
+            vertical: false
+
+      - type: grid
+        title: Live water
+        columns: 2
+        square: false
+        cards:
+          - type: gauge
+            entity: sensor.poolside_water_thermistor
+            name: Water temperature
+            needle: true
+            min: 50
+            max: 105
+            severity:
+              green: 50
+              yellow: 75
+              red: 90
+          - type: gauge
+            entity: sensor.poolside_primary_pump_rpm
+            name: Primary pump
+            needle: true
+            min: 0
+            max: 3450
+
+      - type: history-graph
+        title: Water and chemistry — 24 hours
+        hours_to_show: 24
+        entities:
+          - entity: sensor.poolside_water_thermistor
+            name: Water temperature
+          - entity: sensor.poolside_ph
+
+      - type: calendar
+        title: Schedules
+        initial_view: listWeek
+        entities:
+          - calendar.poolside_schedule

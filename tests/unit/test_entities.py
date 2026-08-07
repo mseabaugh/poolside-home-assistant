@@ -10,6 +10,7 @@ from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import pytest
+from homeassistant.components.climate.const import HVACMode
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -18,8 +19,12 @@ from custom_components.poolside.binary_sensor import PoolsideBinarySensor
 from custom_components.poolside.binary_sensor import _entities as binary_entities
 from custom_components.poolside.calendar import PoolsideCalendar
 from custom_components.poolside.calendar import _entities as calendar_entities
+from custom_components.poolside.climate import PoolsideHeaterClimate
+from custom_components.poolside.climate import _entities as climate_entities
 from custom_components.poolside.coordinator import PoolsideCoordinator
 from custom_components.poolside.entity import scalar_states, setup_dynamic_entities
+from custom_components.poolside.fan import PoolsideBlowerFan
+from custom_components.poolside.fan import _entities as fan_entities
 from custom_components.poolside.light import PoolsideLight
 from custom_components.poolside.models import (
     BodyOfWater,
@@ -320,6 +325,81 @@ async def test_heater_temperature_entity_reads_and_writes_setpoint(
         }
     )
     assert PoolsideHeaterTemperature(coordinator, current.uuid, control.uuid).name == "Spa Heater"
+
+
+async def test_native_climate_and_fan_preserve_high_level_control_boundary(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Native HA controls use only confirmed Heater and Blower fields."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    blower = replace(
+        site.controls["filter-one"],
+        uuid="blower-one",
+        name="Spa Blower",
+        type="Blower",
+        desired={"Status": "ON", "PowerLevel": 65},
+    )
+    coordinator.data = PoolsideData(
+        {site.uuid: replace(site, controls={**site.controls, blower.uuid: blower})}
+    )
+    climate = PoolsideHeaterClimate(coordinator, site.uuid, "heat-one")
+    fan = PoolsideBlowerFan(coordinator, site.uuid, blower.uuid)
+
+    assert climate.target_temperature == 82
+    assert climate.hvac_mode.value == "heat"
+    assert climate.available
+    assert fan.is_on
+    assert fan.percentage == 65
+    assert fan.available
+    assert [entity.control_uuid for entity in climate_entities(coordinator)] == ["heat-one"]
+    assert [entity.control_uuid for entity in fan_entities(coordinator)] == [blower.uuid]
+    await climate.async_set_hvac_mode(HVACMode.OFF)
+    await climate.async_set_temperature(temperature=86)
+    with pytest.raises(ValueError, match="Only Off"):
+        await climate.async_set_hvac_mode(HVACMode.COOL)
+    with pytest.raises(ValueError, match="between"):
+        await climate.async_set_temperature(temperature=True)
+    await fan.async_turn_on()
+    await fan.async_turn_on(percentage=72)
+    await fan.async_turn_off()
+    await fan.async_set_percentage(0)
+    with pytest.raises(ValueError, match="between"):
+        await fan.async_set_percentage(101)
+    assert coordinator.control_writes[-6:] == [
+        (site.uuid, "heat-one", {"Status": "OFF"}),
+        (site.uuid, "heat-one", {"SetPoint": 86}),
+        (site.uuid, blower.uuid, {"Status": "ON"}),
+        (site.uuid, blower.uuid, {"Status": "ON", "PowerLevel": 72}),
+        (site.uuid, blower.uuid, {"Status": "OFF"}),
+        (site.uuid, blower.uuid, {"Status": "OFF"}),
+    ]
+    malformed = replace(
+        site.controls["heat-one"], desired={"Status": "OFF", "SetPoint": "bad", "Restricted": True}
+    )
+    unavailable_blower = replace(blower, desired={"PowerLevel": True, "Restricted": True})
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                controls={
+                    **site.controls,
+                    malformed.uuid: malformed,
+                    blower.uuid: unavailable_blower,
+                },
+            )
+        }
+    )
+    assert str(climate.target_temperature) == "None"
+    assert list(fan_entities(coordinator)) == []
+    assert list(climate_entities(coordinator)) == []
+    legacy_heater = replace(site.controls["heat-one"], desired={})
+    coordinator.data = PoolsideData(
+        {site.uuid: replace(site, controls={**site.controls, legacy_heater.uuid: legacy_heater})}
+    )
+    assert any(entity.control_uuid == legacy_heater.uuid for entity in number_entities(coordinator))
 
 
 async def test_active_body_scope_exposes_options_and_filters_controls(

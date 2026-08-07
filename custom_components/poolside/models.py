@@ -92,8 +92,10 @@ class Control:
         # light rows can inherit another feature's interlock reason. Keep the
         # discovered light visible, while authorize_control still fail-closes
         # any attempted write when the reason is present.
-        return not self.restricted and not self.installer_only and (
-            self.is_light or not self.disabled_reasons
+        return (
+            not self.restricted
+            and not self.installer_only
+            and (self.is_light or not self.disabled_reasons)
         )
 
     @property
@@ -109,6 +111,16 @@ class Control:
     def is_heating(self) -> bool:
         """Return whether this is a discovered pool/spa heating Control."""
         return self.type.lower() in {"heating", "heater", "heatingcontrol"}
+
+    @property
+    def is_blower(self) -> bool:
+        """Return whether this safe high-level Control is a variable-speed blower."""
+        return "blower" in self.type.lower()
+
+    @property
+    def supports_temperature_setpoint(self) -> bool:
+        """Return whether the discovered heating Control reports a SetPoint."""
+        return self.is_heating and ("SetPoint" in self.raw or "SetPoint" in self.desired)
 
     @property
     def water_body_uuid(self) -> str | None:
