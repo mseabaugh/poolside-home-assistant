@@ -9,3 +9,6 @@ views:
           - entity: switch.synthetic_pool_filter
           - entity: light.synthetic_pool_pool_light
           - entity: number.synthetic_pool_filter_power_level
+      - type: custom:poolside-dashboard
+        name: Poolside overview
+        mode_entity: select.synthetic_pool_active_body
