@@ -42,8 +42,17 @@ class PoolsideEntity(CoordinatorEntity[PoolsideCoordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Group every site-level entity under one Poolside hub device."""
+        """Group controls under their body-of-water child device when known."""
         site = self.coordinator.site(self.site_uuid)
+        if self.body_uuid and self.body_uuid in site.bodies_of_water:
+            body = site.bodies_of_water[self.body_uuid]
+            return DeviceInfo(
+                identifiers={(DOMAIN, f"{site.uuid}_{body.uuid}")},
+                manufacturer="Poolside Tech",
+                model="Body of Water",
+                name=body.name,
+                via_device=(DOMAIN, site.uuid),
+            )
         return DeviceInfo(
             identifiers={(DOMAIN, site.uuid)},
             manufacturer="Poolside Tech",

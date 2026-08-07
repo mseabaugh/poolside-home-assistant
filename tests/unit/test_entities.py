@@ -343,6 +343,9 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     switch = PoolsideSwitch(coordinator, site.uuid, "filter-one")
     assert light.available
     assert switch.available
+    assert light.device_info["name"] == "Pool"
+    assert light.device_info["via_device"] == ("poolside", "site-alpha")
+    assert switch.device_info["name"] == "Spa"
     await selector.async_select_option("Pool")
     coordinator.set_active_body(site.uuid, "pool")
     assert selector.current_option == "Pool"
