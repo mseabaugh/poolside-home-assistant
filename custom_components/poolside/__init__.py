@@ -35,9 +35,11 @@ async def _async_register_frontend_assets(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig("/poolside", str(www), cache_headers=False)]
         )
-    if "frontend_extra_module_url" in hass.data:
-        add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
-        add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
+    # Home Assistant may initialize the frontend registry after integrations;
+    # create the set so both local cards are registered in either order.
+    hass.data.setdefault("frontend_extra_module_url", set())
+    add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+    add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
 
 
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:

@@ -36,8 +36,6 @@ async def test_async_setup_registers_frontend_assets_when_http_is_available(
         lambda hass_arg, url: captured_urls.append((hass_arg, url)),
     )
     monkeypatch.setattr(hass, "http", dummy_http, raising=False)
-    hass.data["frontend_extra_module_url"] = set()
-
     assert await poolside.async_setup(hass, {})
 
     assert dummy_http.paths == [
@@ -67,4 +65,7 @@ async def test_async_setup_skips_static_registration_when_http_is_missing(
 
     assert await poolside.async_setup(hass, {})
 
-    assert captured_urls == []
+    assert captured_urls == [
+        (hass, "/poolside/poolside-body-selector.js"),
+        (hass, "/poolside/poolside-dashboard.js"),
+    ]
