@@ -160,6 +160,11 @@ class PoolsideDashboard extends HTMLElement {
   _renderModes(mode, modeEntity) {
     const rail = this.shadowRoot.querySelector(".mode-rail");
     rail.innerHTML = "";
+    const transition = mode.attributes?.transition_state;
+    if (transition) {
+      rail.innerHTML = `<div class="empty">Changing flow: ${this._escape(transition)}. Circulation may pause while Poolside moves the valves.</div>`;
+      return;
+    }
     (Array.isArray(mode.attributes.options) ? mode.attributes.options : ["Off"]).forEach((option) => {
       const button = document.createElement("button");
       button.className = `mode ${option === mode.state ? "active" : ""}`;
@@ -213,7 +218,7 @@ class PoolsideDashboard extends HTMLElement {
     const features = this._featureCards([...groups.circulation, ...groups.features, ...groups.other]);
     if (features) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:water-outline"></ha-icon>Water features</div><div class="features">${features}</div></div>`);
     if (schedules.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:calendar-clock"></ha-icon>Schedules</div>${schedules.map((schedule) => `<div class="row"><div><strong>${this._escape(schedule.title)}</strong><div class="schedule-time">${this._escape(schedule.time)}</div></div></div>`).join("")}<p class="hint">Schedules are shown from Poolside. Editing remains in the Poolside app until its conflict-safe schedule write procedure is verified.</p></div>`);
-    const resting = String(mode.state).toLowerCase() === "off" ? "Select Pool or Spa to start a water mode. Shared flow equipment stays protected until Poolside confirms the change." : `No Poolside equipment is currently running in ${mode.state}.`;
+    const resting = String(mode.state).toLowerCase() === "off" ? "Select Pool or Spa to start a water mode. Poolside will stop circulation, move the valves, and restart the selected flow." : `No Poolside equipment is currently running in ${mode.state}.`;
     target.innerHTML = panels.length ? `<div class="home-grid">${panels.join("")}</div>` : `<div class="empty"><strong>Everything is resting.</strong><br><span class="hint">${this._escape(resting)}</span></div>`;
     this._wireControls(target);
   }
@@ -469,7 +474,7 @@ class PoolsideDashboard extends HTMLElement {
 
   async _select(option, current, entityId) {
     if (option === current) return;
-    if (current && current.toLowerCase() !== "off" && option.toLowerCase() !== "off" && !window.confirm(`Switch from ${current} to ${option}? Poolside will adjust shared valves safely.`)) return;
+    if (current && current.toLowerCase() !== "off" && option.toLowerCase() !== "off" && !window.confirm(`Switch from ${current} to ${option}? Poolside will stop circulation, pause while the valves move, and restart the selected flow.`)) return;
     await this._hass.callService("select", "select_option", { entity_id: entityId, option });
   }
 

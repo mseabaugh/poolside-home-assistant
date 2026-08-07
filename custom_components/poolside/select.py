@@ -44,7 +44,7 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideEntity]:
 
 
 class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
-    """Select the local body-of-water control scope without making API writes."""
+    """Select one body through Poolside's server-side flow procedure."""
 
     _attr_name = "Active body"
 
@@ -137,11 +137,36 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
                 return label
         return "Off"
 
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose safe transition diagnostics without exposing credentials."""
+        transition = self.coordinator.flow_transition(self.site_uuid, self.group_key)
+        if transition is None:
+            return {
+                "flow_procedure_available": self.coordinator.site(
+                    self.site_uuid
+                ).flow_procedure_complete
+            }
+        return {
+            "flow_procedure_available": True,
+            "transition_state": transition["state"],
+            **transition,
+        }
+
+    @property
+    def available(self) -> bool:
+        """Fail closed when Poolside cannot prove a safe flow procedure."""
+        return super().available and self.coordinator.site(self.site_uuid).flow_procedure_complete
+
     async def async_select_option(self, option: str) -> None:
-        """Change only the local scope; never infer or issue a remote mode write."""
+        """Request one confirmed cloud flow transition."""
         if option not in self._options_map:
             raise ValueError("Body option is not available")
-        self.coordinator.set_active_body(self.site_uuid, self._options_map[option], self.group_key)
+        target = self._options_map[option]
+        current = self.current_option
+        if option == current:
+            return
+        await self.coordinator.async_run_flow_switch(self.site_uuid, self.group_key, target)
 
 
 def _theme_options(coordinator: PoolsideCoordinator, site_uuid: str) -> dict[str, str]:

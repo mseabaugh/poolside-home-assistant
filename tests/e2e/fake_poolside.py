@@ -57,7 +57,7 @@ class FakePoolsideService:
         """Require the synthetic credential on application endpoints."""
         return request.headers.get("Authorization") == f"Bearer {SYNTHETIC_TOKEN}"
 
-    async def rpc(self, request: web.Request) -> web.Response:
+    async def rpc(self, request: web.Request) -> web.Response:  # noqa: C901
         """Handle confirmed JSON-RPC calls and mutate only synthetic Controls."""
         try:
             payload = await request.json()
@@ -79,6 +79,10 @@ class FakePoolsideService:
             result = self.states
         elif method == "Site.getDesiredState":
             result = self.desired
+        elif method == "Site.getAllConfig":
+            # The synthetic fixture has no verified flow procedure; the
+            # integration must therefore keep the body selector unavailable.
+            result = {}
         elif method == "Site.setDesiredState2":
             records = params.get("DesiredStates", [])
             self._merge_desired(records)

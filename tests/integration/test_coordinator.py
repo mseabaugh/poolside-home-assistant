@@ -17,6 +17,7 @@ from custom_components.poolside.coordinator import PoolsideCoordinator
 from custom_components.poolside.exceptions import (
     AuthenticationError,
     CannotConnectError,
+    PoolsideError,
     ProtocolError,
 )
 from custom_components.poolside.models import (
@@ -182,6 +183,101 @@ async def test_refresh_syncs_active_body_only_from_unambiguous_flow_control(
         )
     )
     assert coordinator.active_body(site.uuid, "pool|spa") is None
+    await coordinator.async_shutdown()
+
+
+async def test_flow_switch_waits_for_confirmation_and_hides_body_controls(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """A mode request is one cloud procedure and body controls are unavailable while pending."""
+    discovered = discover_sites(user_config).sites["site-alpha"]
+    pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        discovered.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    site = replace(
+        discovered,
+        bodies_of_water={"pool": pool, "spa": spa},
+        flow_procedure={
+            "FlowBasedProcedures": [{"FlowUUID": "flow"}],
+            "ControlBasedProcedures": [{}],
+        },
+    )
+    client = LoadClient(PoolsideData({site.uuid: site}))
+    client.async_run_flow_switch = AsyncMock(return_value=True)  # type: ignore[attr-defined]
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    coordinator._flow_transitions = {(site.uuid, "pool|spa"): {"state": "Stopping circulation"}}
+    coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
+    assert not coordinator.body_is_visible(site.uuid, "pool")
+    coordinator._flow_transitions = None  # type: ignore[assignment]
+    coordinator._active_bodies = None  # type: ignore[assignment]
+    coordinator.set_active_body(site.uuid, "pool", "pool|spa")
+    coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
+    coordinator.async_request_refresh = AsyncMock(  # type: ignore[method-assign]
+        side_effect=lambda: coordinator._active_bodies.__setitem__((site.uuid, "pool|spa"), "spa")
+    )
+    await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
+    client.async_run_flow_switch.assert_awaited_once_with(site, "spa")  # type: ignore[attr-defined]
+    assert coordinator.flow_transition(site.uuid, "pool|spa") is None
+
+
+async def test_flow_switch_rejection_and_invalid_group_fail_closed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """Rejected procedures and unknown bodies never change the confirmed mode."""
+    discovered = discover_sites(user_config).sites["site-alpha"]
+    pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        discovered.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    site = replace(discovered, bodies_of_water={"pool": pool, "spa": spa})
+    client = LoadClient(PoolsideData({site.uuid: site}))
+    client.async_run_flow_switch = AsyncMock(return_value=False)  # type: ignore[attr-defined]
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    with pytest.raises(ValueError, match="flow group"):
+        await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "unknown")
+    with pytest.raises(PoolsideError):
+        await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
+    assert coordinator.active_body(site.uuid, "pool|spa") is None
+    await coordinator.async_shutdown()
+
+
+async def test_flow_switch_fails_when_cloud_confirms_a_different_body(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """A conflicting cloud snapshot never becomes an optimistic HA state."""
+    discovered = discover_sites(user_config).sites["site-alpha"]
+    pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
+    spa = BodyOfWater(
+        "spa", "Spa", "Spa", discovered.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    site = replace(discovered, bodies_of_water={"pool": pool, "spa": spa})
+    client = LoadClient(PoolsideData({site.uuid: site}))
+    client.async_run_flow_switch = AsyncMock(return_value=True)  # type: ignore[attr-defined]
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
+    coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+    with pytest.raises(PoolsideError, match="confirm"):
+        await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
+    assert coordinator.active_body(site.uuid, "pool|spa") == "pool"
     await coordinator.async_shutdown()
 
 

@@ -18,10 +18,19 @@ from custom_components.poolside.models import (
     ObjectKind,
     apply_runtime,
     discover_sites,
+    find_flow_document,
 )
 from custom_components.poolside.safety import SafetyPolicy
 
 pytestmark = pytest.mark.unit
+
+
+def test_find_flow_document_handles_nested_documents_and_non_mappings() -> None:
+    """Flow metadata is found only in explicit nested config documents."""
+    document = {"records": [{"data": {"FlowBasedProcedures": [], "extra": True}}]}
+    assert find_flow_document(document)["extra"] is True
+    assert find_flow_document(["ignored", {"ControlBasedProcedures": []}])
+    assert find_flow_document({"records": ["ignored"]}) == {}
 
 
 def test_discovery_and_runtime_merge(

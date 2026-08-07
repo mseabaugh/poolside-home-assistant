@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from .exceptions import ProtocolError
-from .models import PoolsideData, Site, apply_runtime, discover_sites
+from .models import PoolsideData, Site, apply_runtime, discover_sites, find_flow_document
 from .redact import fingerprint
 from .safety import SafetyPolicy
 from .transport import Transport
@@ -71,12 +71,22 @@ class PoolsideClient:
         remote_ids = tuple(discovered.sites[site_uuid].remote_id for site_uuid in site_ids)
         state_tasks = [self.async_get_states(remote_id) for remote_id in remote_ids]
         desired_tasks = [self.async_get_desired_state(remote_id) for remote_id in remote_ids]
-        runtime = await asyncio.gather(*state_tasks, *desired_tasks)
+        # Flow procedures live in site maintenance configuration and may not
+        # be included in User.getConfig. Load that authoritative document so
+        # the mode selector fails closed only when the server omitted it.
+        flow_tasks = [self.async_get_all_config(remote_id) for remote_id in remote_ids]
+        runtime = await asyncio.gather(*state_tasks, *desired_tasks, *flow_tasks)
         split = len(site_ids)
         states = runtime[:split]
         desired = runtime[split:]
+        flow_documents = desired[split:]
+        desired = desired[:split]
         sites = {
-            site_uuid: apply_runtime(discovered.sites[site_uuid], states[index], desired[index])
+            site_uuid: replace(
+                apply_runtime(discovered.sites[site_uuid], states[index], desired[index]),
+                flow_procedure=find_flow_document(flow_documents[index])
+                or discovered.sites[site_uuid].flow_procedure,
+            )
             for index, site_uuid in enumerate(site_ids)
         }
         return PoolsideData(sites)
@@ -100,6 +110,35 @@ class PoolsideClient:
                 "BatchUUID": str(uuid4()),
                 "SiteUUID": site.uuid,
                 "DesiredStates": [desired],
+            },
+        )
+
+    async def async_run_flow_switch(self, site: Site, body_uuid: str | None) -> Any:
+        """Run Poolside's verified server-side body-flow procedure.
+
+        This deliberately uses the Attendant message procedure rather than
+        writing individual filters, valves, pumps, or relays.  The controller
+        owns the safe stop/pause/valve/restart sequence.
+        """
+        if body_uuid is not None and body_uuid not in site.bodies_of_water:
+            raise ProtocolError("Requested body is not discovered")
+        controller_uuid = site.controller_uuid
+        if controller_uuid is None:
+            raise ProtocolError("Poolside controller is not discovered")
+        if not site.flow_procedure_complete:
+            raise ProtocolError("Poolside flow procedure is incomplete")
+        return await self._transport.async_rpc(
+            "Device.sendMessage",
+            {
+                "deviceUuid": controller_uuid,
+                "payload": {
+                    "method": "runFlowSwitchProcedure",
+                    "params": {
+                        "siteId": site.remote_id,
+                        "BodyOfWaterUUID": body_uuid,
+                    },
+                    "id": str(uuid4()),
+                },
             },
         )
 

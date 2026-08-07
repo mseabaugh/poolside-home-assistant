@@ -171,6 +171,23 @@ class Equipment:
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
+def find_flow_document(value: Any) -> Mapping[str, Any]:
+    """Find the explicit flow-procedure document without guessing relationships."""
+    if isinstance(value, Mapping):
+        if any(key in value for key in ("FlowBasedProcedures", "ControlBasedProcedures")):
+            return value
+        for child in value.values():
+            found = find_flow_document(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = find_flow_document(child)
+            if found:
+                return found
+    return {}
+
+
 def _find_body_root(parent: dict[str, str], value: str) -> str:
     """Find one body component root with path compression."""
     while parent[value] != value:
@@ -236,6 +253,7 @@ class Site:
     schedule_document: Mapping[str, Any] = field(default_factory=dict)
     alerts: tuple[Mapping[str, Any], ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict)
+    flow_procedure: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def remote_id(self) -> str | int:
@@ -264,6 +282,28 @@ class Site:
         """Return explicit XOR groups, keeping unrelated bodies separate."""
         return _body_connection_groups(
             self.bodies_of_water, self.all_controls, self.combined_controls
+        )
+
+    @property
+    def controller_uuid(self) -> str | None:
+        """Return the discovered Attendant/controller UUID for flow RPCs."""
+        for item in self.equipment.values():
+            if "controller" in item.type.lower() or "attendant" in item.type.lower():
+                return item.uuid
+        value = self.raw.get("ControllerUUID", self.raw.get("controllerUuid"))
+        return value if isinstance(value, str) and value else None
+
+    @property
+    def flow_procedure_complete(self) -> bool:
+        """Require the complete server procedure before exposing a writable mode."""
+        document = self.flow_procedure
+        return bool(
+            isinstance(document.get("FlowBasedProcedures"), list)
+            and bool(document["FlowBasedProcedures"])
+            and isinstance(document.get("ControlBasedProcedures"), list)
+            and bool(document["ControlBasedProcedures"])
+            and self.controller_uuid
+            and len(self.body_connection_groups) > 0
         )
 
 
@@ -483,6 +523,7 @@ def discover_sites(payload: Any) -> PoolsideData:
 
         schedule_value = site_raw.get("Schedule", site_raw.get("schedule", {}))
         schedule_document = dict(schedule_value) if isinstance(schedule_value, Mapping) else {}
+        flow_procedure = find_flow_document(site_raw)
         sites.append(
             Site(
                 uuid=site_uuid,
@@ -496,6 +537,7 @@ def discover_sites(payload: Any) -> PoolsideData:
                 equipment=_index_unique(equipment, lambda item: item.uuid, "equipment"),
                 schedule_document=schedule_document,
                 raw=dict(site_raw),
+                flow_procedure=dict(flow_procedure),
             )
         )
 

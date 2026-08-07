@@ -129,7 +129,9 @@ class PoolsideBodySelector extends HTMLElement {
     if (!names.length) return;
 
     this._heading.textContent = this.config.name || "Active body";
-    this._state.textContent = entity.state === "unknown" ? "Waiting for confirmation" : entity.state;
+    this._state.textContent = entity.attributes?.transition_state
+      ? `Changing flow: ${entity.attributes.transition_state}`
+      : entity.state === "unknown" ? "Waiting for confirmation" : entity.state;
     const states = names.length;
     this._segments.style.gridTemplateColumns = `repeat(${states}, minmax(0, 1fr))`;
     this._segments.querySelectorAll(".segment").forEach((node) => node.remove());
@@ -153,6 +155,7 @@ class PoolsideBodySelector extends HTMLElement {
       button.style.display = "block";
       button.setAttribute("aria-label", `Select ${this._escape(option)}`);
       button.addEventListener("click", () => this._select(option, entity.state));
+      if (entity.attributes?.transition_state || entity.state === "unavailable") button.disabled = true;
       this._segments.appendChild(button);
     });
   }

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from contextlib import suppress
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -60,10 +60,10 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._pending_controls: dict[tuple[str, str], dict[str, object]] = {}
-        # Active body is a local control scope.  Poolside's API does not expose
-        # a confirmed body-mode write, so changing it must never send a remote
-        # command or imply that another body was switched off.
+        # Active body is the last confirmed Poolside flow state. Changes are
+        # accepted only through the server-side procedure below.
         self._active_bodies: dict[tuple[str, str], str | None] = {}
+        self._flow_transitions: dict[tuple[str, str], dict[str, object]] = {}
 
     def _apply_pending_controls(self, data: PoolsideData) -> PoolsideData:
         """Overlay successful local writes until the cloud snapshot confirms them."""
@@ -222,8 +222,87 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         if body_uuid is None:
             return True
         group_key = self.body_group_key(site_uuid, body_uuid)
+        if self.flow_transition(site_uuid, group_key) is not None:
+            return False
         selected = self.active_body(site_uuid, group_key)
         return selected is None or selected == body_uuid
+
+    def flow_transition(self, site_uuid: str, group_key: str) -> dict[str, object] | None:
+        """Return the current server-side flow transition, if one is pending."""
+        return (getattr(self, "_flow_transitions", None) or {}).get((site_uuid, group_key))
+
+    async def async_run_flow_switch(
+        self, site_uuid: str, group_key: str, body_uuid: str | None
+    ) -> None:
+        """Request one safe Poolside flow transition and await confirmation."""
+        site = self.site(site_uuid)
+        if body_uuid is not None and body_uuid not in self._group_bodies(site_uuid, group_key):
+            raise ValueError("Body is not part of this flow group")
+        previous = self.active_body(site_uuid, group_key)
+        started = datetime.now(UTC)
+        transition = {
+            "state": "Preparing",
+            "previous_body_uuid": previous,
+            "requested_body_uuid": body_uuid,
+            "started": started.isoformat(),
+        }
+        transitions = getattr(self, "_flow_transitions", None)
+        if transitions is None:
+            transitions = {}
+            self._flow_transitions = transitions
+        transitions[(site_uuid, group_key)] = transition
+        self.async_update_listeners()
+        try:
+            transition["state"] = "Stopping circulation"
+            self.async_update_listeners()
+            result = await asyncio.wait_for(
+                self.client.async_run_flow_switch(site, body_uuid), timeout=60
+            )
+            if result is False:
+                raise PoolsideError("Poolside rejected the flow transition")
+            transition["state"] = "Moving valves"
+            self.async_update_listeners()
+            transition["state"] = "Starting circulation"
+            self.async_update_listeners()
+            await self.async_request_refresh()
+            confirmed = self.active_body(site_uuid, group_key)
+            if body_uuid is not None and confirmed != body_uuid:
+                raise PoolsideError("Poolside did not confirm the requested body")
+            transition["state"] = "Confirmed"
+            transition["completed"] = datetime.now(UTC).isoformat()
+            _LOGGER.info(
+                "poolside_flow_transition outcome=confirmed site=%s previous=%s requested=%s",
+                site_uuid,
+                previous,
+                body_uuid,
+            )
+        except Exception as err:
+            transition["state"] = "Timed out" if isinstance(err, TimeoutError) else "Failed"
+            transition["error_type"] = type(err).__name__
+            _LOGGER.warning(
+                "poolside_flow_transition outcome=failed site=%s previous=%s "
+                "requested=%s error_type=%s",
+                site_uuid,
+                previous,
+                body_uuid,
+                type(err).__name__,
+            )
+            raise
+        finally:
+            self._flow_transitions.pop((site_uuid, group_key), None)
+            self.async_update_listeners()
+
+    def _group_bodies(self, site_uuid: str, group_key: str) -> frozenset[str]:
+        """Resolve a stable group key to its discovered body UUIDs."""
+        site = self.site(site_uuid)
+        return next(
+            (
+                group
+                for group in site.body_connection_groups
+                if "|".join(sorted(group)) == group_key
+            ),
+            frozenset(),
+        )
 
     def set_active_body(
         self, site_uuid: str, body_uuid: str | None, group_key: str | None = None

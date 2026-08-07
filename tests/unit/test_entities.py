@@ -59,6 +59,8 @@ class StubCoordinator(PoolsideCoordinator):
         self.hass = cast("HomeAssistant", SimpleNamespace(config=SimpleNamespace(time_zone="UTC")))
         self.control_writes: list[tuple[str, str, dict[str, object]]] = []
         self.theme_writes: list[tuple[str, str]] = []
+        self._active_bodies: dict[tuple[str, str], str | None] = {}
+        self._flow_transitions: dict[tuple[str, str], dict[str, object]] = {}
         self.listener: Any = None
 
     def site(self, site_uuid: str) -> Site:
@@ -71,6 +73,12 @@ class StubCoordinator(PoolsideCoordinator):
 
     async def async_activate_theme(self, site_uuid: str, theme_uuid: str) -> None:
         self.theme_writes.append((site_uuid, theme_uuid))
+
+    async def async_run_flow_switch(
+        self, site_uuid: str, group_key: str, body_uuid: str | None
+    ) -> None:
+        """Model a confirmed procedure without issuing equipment writes."""
+        self.set_active_body(site_uuid, body_uuid, group_key)
 
     def async_add_listener(
         self, listener: Callable[[], None], _context: Any = None
@@ -402,7 +410,7 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
     assert any(entity.control_uuid == legacy_heater.uuid for entity in number_entities(coordinator))
 
 
-async def test_active_body_scope_exposes_options_and_filters_controls(
+async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: PLR0915
     user_config: dict[str, Any],
     states_payload: dict[str, Any],
     desired_payload: dict[str, Any],
@@ -434,6 +442,8 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     assert selector.options == ["Off", "Pool", "Spa"]
     assert selector.current_option == "Off"
     assert selector.device_info["model"] == "Body Group"
+    assert selector.extra_state_attributes["flow_procedure_available"] is False
+    assert not selector.available
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -453,7 +463,9 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
-                coordinator.site(site.uuid), bodies_of_water={"pool": pool, "spa": spa}
+                coordinator.site(site.uuid),
+                bodies_of_water={"pool": pool, "spa": spa},
+                flow_procedure={"FlowBasedProcedures": [], "ControlBasedProcedures": []},
             )
         }
     )
@@ -468,6 +480,10 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     coordinator.set_active_body(site.uuid, "pool")
     assert coordinator.active_body(site.uuid) == "pool"
     assert selector.current_option == "Pool"
+    await selector.async_select_option("Pool")
+    coordinator._flow_transitions[(site.uuid, "pool|spa")] = {"state": "Moving valves"}
+    assert selector.extra_state_attributes["transition_state"] == "Moving valves"
+    coordinator._flow_transitions.clear()
     assert light.available
     assert not coordinator.body_is_visible(site.uuid, "spa")
     assert coordinator.body_is_visible(site.uuid, "pond")

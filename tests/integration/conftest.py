@@ -30,6 +30,7 @@ def fake_transport(
         {
             "Site.getDesiredState": desired_payload,
             "Site.getStates": states_payload,
+            "Site.getAllConfig": {},
             "Site.setDesiredState2": True,
             "Site.setTheme": True,
             "User.getConfig": user_config,
