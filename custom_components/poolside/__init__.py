@@ -37,6 +37,7 @@ async def _async_register_frontend_assets(hass: HomeAssistant) -> None:
         )
     if "frontend_extra_module_url" in hass.data:
         add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+        add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
 
 
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
