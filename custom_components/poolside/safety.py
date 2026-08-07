@@ -33,7 +33,7 @@ class SafetyPolicy:
         control = site.all_controls.get(target_uuid)
         if control is None:
             raise UnsafeWriteError("Write target is not a discovered Control")
-        if control.restricted or control.disabled_reasons:
+        if control.restricted or control.installer_only or control.disabled_reasons:
             raise RestrictedControlError("Control is currently restricted or disabled")
         allowed = _BASE_CONTROL_FIELDS | (_LIGHT_FIELDS if control.is_light else frozenset())
         if not changes or not set(changes).issubset(allowed):

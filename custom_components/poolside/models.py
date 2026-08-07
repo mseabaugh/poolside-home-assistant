@@ -66,6 +66,18 @@ class Control:
         return bool(self.desired.get("Restricted", self.raw.get("Restricted", False)))
 
     @property
+    def installer_only(self) -> bool:
+        """Return whether Poolside marks a control as maintenance/installer-only."""
+        markers = (
+            "InstallerOnly",
+            "InstallerMode",
+            "MaintenanceOnly",
+            "Calibration",
+            "Commissioning",
+        )
+        return any(bool(self.raw.get(marker) or self.desired.get(marker)) for marker in markers)
+
+    @property
     def disabled_reasons(self) -> tuple[str, ...]:
         """Return opaque disable reasons without interpreting them as writable targets."""
         value = self.desired.get("DisabledReasons", self.raw.get("DisabledReasons", []))
@@ -80,7 +92,9 @@ class Control:
         # light rows can inherit another feature's interlock reason. Keep the
         # discovered light visible, while authorize_control still fail-closes
         # any attempted write when the reason is present.
-        return not self.restricted and (self.is_light or not self.disabled_reasons)
+        return not self.restricted and not self.installer_only and (
+            self.is_light or not self.disabled_reasons
+        )
 
     @property
     def is_light(self) -> bool:

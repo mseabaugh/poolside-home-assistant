@@ -284,6 +284,14 @@ def test_safety_policy_authorizes_only_confirmed_targets_and_fields(
         policy.authorize_control(site, "pump-one", {"Status": "ON"})
     with pytest.raises(RestrictedControlError):
         policy.authorize_control(site, "jets-restricted", {"Status": "ON"})
+    installer = replace(
+        site.controls["filter-one"], raw={"Type": "Filter", "InstallerMode": True}
+    )
+    installer_site = replace(site, controls={**site.controls, "filter-one": installer})
+    assert installer.installer_only
+    assert not installer.available
+    with pytest.raises(RestrictedControlError):
+        policy.authorize_control(installer_site, "filter-one", {"Status": "ON"})
     with pytest.raises(UnsafeWriteError, match="unconfirmed field"):
         policy.authorize_control(site, "filter-one", {})
     with pytest.raises(UnsafeWriteError, match="unconfirmed field"):
