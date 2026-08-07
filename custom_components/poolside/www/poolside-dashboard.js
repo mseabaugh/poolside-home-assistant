@@ -16,6 +16,7 @@ class PoolsideDashboard extends HTMLElement {
         .metric { padding:10px; border:1px solid var(--divider-color); border-radius:10px; }
         .metric-label { display:block; opacity:.7; font-size:.72rem; }
         .metric-value { display:block; margin-top:3px; font-size:1rem; font-weight:600; }
+        .mode-note { margin:10px 0 2px; opacity:.75; font-size:.85rem; }
         .rail { display:flex; gap:4px; margin:16px 0; padding:3px; background:#e1e5e9; border-radius:24px; }
         button { border:0; border-radius:20px; background:transparent; padding:9px 12px; flex:1; cursor:pointer; }
         button.active { background:var(--primary-color); color:var(--text-primary-color); font-weight:600; }
@@ -37,7 +38,7 @@ class PoolsideDashboard extends HTMLElement {
       </style>
       <ha-card><h2></h2><div class="muted">Shared valves and equipment follow the cloud mode procedure.</div>
       <div class="rail"></div><div class="summary-grid"></div>
-      <details class="controls section" open><summary>Controls</summary><div class="pool section"><h3>Pool</h3><div class="entity-rows"></div></div><div class="spa section"><h3>Spa</h3><div class="entity-rows"></div></div></details>
+      <details class="controls section" open><summary>Controls</summary><div class="mode-note"></div><div class="pool section"><h3>Pool</h3><div class="entity-rows"></div></div><div class="spa section"><h3>Spa</h3><div class="entity-rows"></div></div></details>
       <details class="diagnostics section"><summary>Diagnostics</summary><div class="diagnostic-rows"></div></details></ha-card>`;
     this._render();
   }
@@ -53,6 +54,7 @@ class PoolsideDashboard extends HTMLElement {
     if (!mode) {
       rail.innerHTML = "";
       this.shadowRoot.querySelector(".summary-grid").innerHTML = '<div class="notice">Poolside status is unavailable.</div>';
+      this.shadowRoot.querySelector(".mode-note").textContent = "Poolside controls are unavailable until the integration reconnects.";
       this.shadowRoot.querySelector(".diagnostic-rows").innerHTML =
         '<div class="notice">No active-body selector was found. Reload the Poolside integration.</div>';
       this.shadowRoot.querySelector(".diagnostics").hidden = false;
@@ -88,26 +90,30 @@ class PoolsideDashboard extends HTMLElement {
       if (selected === "spa") spa = discovered.controls;
     }
     const activeControls = selected === "pool" ? pool : selected === "spa" ? spa : [];
-    this._renderSummary(mode, activeControls, diagnostics);
+    const allControls = [...new Set([...pool, ...spa])];
+    this._renderSummary(mode, activeControls, diagnostics, allControls);
+    this.shadowRoot.querySelector(".mode-note").textContent = selected === "off"
+      ? `Select Pool or Spa above to show its controls. Discovered: Pool ${pool.length}, Spa ${spa.length}.`
+      : `Showing confirmed ${mode.state} controls. Shared valves and equipment remain cloud-managed.`;
     this._renderEntities("pool", selected === "pool" ? pool : []);
     this._renderEntities("spa", selected === "spa" ? spa : []);
     this._renderDiagnostics(diagnostics);
   }
 
-  _renderSummary(mode, controls, diagnostics) {
-    const states = [...diagnostics, ...controls].map((id) => this._hass.states[id]).filter(Boolean);
+  _renderSummary(mode, controls, diagnostics, allControls) {
+    const states = [...diagnostics, ...allControls].map((id) => this._hass.states[id]).filter(Boolean);
     const findValue = (pattern) => {
       const match = diagnostics.map((id) => this._hass.states[id]).find((state) => state && pattern.test(`${state.attributes.friendly_name || ""} ${state.entity_id || ""}`.toLowerCase()) && !["unavailable", "unknown"].includes(state.state));
       return match ? `${match.state} ${match.attributes.unit_of_measurement || ""}`.trim() : "—";
     };
     const active = states.filter((state) => state.state === "on").length;
     const unavailable = states.filter((state) => ["unavailable", "unknown"].includes(state.state)).length;
-    const findControl = (pattern) => controls.map((id) => this._hass.states[id]).find((state) => state && pattern.test(state.attributes.friendly_name || ""));
+    const findControl = (pattern) => allControls.map((id) => this._hass.states[id]).find((state) => state && pattern.test(state.attributes.friendly_name || ""));
     const heater = findControl(/heater/i);
     const filter = findControl(/filter|pump|circulation/i);
-    const lights = controls.filter((id) => id.startsWith("light.")).map((id) => this._hass.states[id]).filter(Boolean);
-    const features = controls.map((id) => this._hass.states[id]).filter((state) => state && /(bubbler|blower|cleaner|spill|jets)/i.test(state.attributes.friendly_name || ""));
-    const heaterSetpoint = controls.filter((id) => id.startsWith("number.")).map((id) => this._hass.states[id]).find((state) => state && /heater|temperature|setpoint/i.test(state.attributes.friendly_name || ""));
+    const lights = allControls.filter((id) => id.startsWith("light.")).map((id) => this._hass.states[id]).filter(Boolean);
+    const features = allControls.map((id) => this._hass.states[id]).filter((state) => state && /(bubbler|blower|cleaner|spill|jets)/i.test(state.attributes.friendly_name || ""));
+    const heaterSetpoint = allControls.filter((id) => id.startsWith("number.")).map((id) => this._hass.states[id]).find((state) => state && /heater|temperature|setpoint/i.test(state.attributes.friendly_name || ""));
     const heaterState = heater ? (heater.state === "on" ? "On" : heater.state) : "—";
     const heatValue = heaterSetpoint && !["unavailable", "unknown"].includes(heaterSetpoint.state) ? ` · ${heaterSetpoint.state} ${heaterSetpoint.attributes.unit_of_measurement || ""}` : "";
     const metrics = [
@@ -115,8 +121,9 @@ class PoolsideDashboard extends HTMLElement {
       ["Water temperature", findValue(/water.*temp|temp.*water|temperature/)],
       ["Circulation", filter ? (filter.state === "on" ? "On" : filter.state) : findValue(/rpm|speed|flow/)],
       ["Heating", `${heaterState}${heatValue}`],
-      ["Lighting", `${lights.filter((state) => state.state === "on").length}/${lights.length}`],
-      ["Features", `${features.filter((state) => state.state === "on").length}/${features.length}`],
+      ["Lighting", `${lights.filter((state) => state.state === "on").length}/${lights.length || 0} on`],
+      ["Features", `${features.filter((state) => state.state === "on").length}/${features.length || 0} on`],
+      ["Mode controls", `${controls.length} active`],
     ];
     this.shadowRoot.querySelector(".summary-grid").innerHTML = metrics.map(([label, value]) => `<div class="metric"><span class="metric-label">${this._escape(label)}</span><span class="metric-value">${this._escape(value)}</span></div>`).join("");
   }
