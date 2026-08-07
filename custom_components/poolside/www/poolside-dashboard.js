@@ -12,6 +12,10 @@ class PoolsideDashboard extends HTMLElement {
         ha-card { padding:16px; }
         h2 { margin:0 0 4px; font-size:1.1rem; }
         .muted { opacity:.7; font-size:.8rem; }
+        .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin:14px 0; }
+        .metric { padding:10px; border:1px solid var(--divider-color); border-radius:10px; }
+        .metric-label { display:block; opacity:.7; font-size:.72rem; }
+        .metric-value { display:block; margin-top:3px; font-size:1rem; font-weight:600; }
         .rail { display:flex; gap:4px; margin:16px 0; padding:3px; background:#e1e5e9; border-radius:24px; }
         button { border:0; border-radius:20px; background:transparent; padding:9px 12px; flex:1; cursor:pointer; }
         button.active { background:var(--primary-color); color:var(--text-primary-color); font-weight:600; }
@@ -30,7 +34,8 @@ class PoolsideDashboard extends HTMLElement {
         .notice { color:var(--warning-color); font-size:.78rem; margin-top:12px; }
       </style>
       <ha-card><h2></h2><div class="muted">Shared valves and equipment follow the cloud mode procedure.</div>
-      <div class="rail"></div><div class="pool section"><h3>Pool</h3><div class="entity-rows"></div></div><div class="spa section"><h3>Spa</h3><div class="entity-rows"></div></div>
+      <div class="rail"></div><div class="summary-grid"></div>
+      <details class="controls section" open><summary>Controls</summary><div class="pool section"><h3>Pool</h3><div class="entity-rows"></div></div><div class="spa section"><h3>Spa</h3><div class="entity-rows"></div></div></details>
       <details class="diagnostics section"><summary>Diagnostics</summary><div class="diagnostic-rows"></div></details></ha-card>`;
     this._render();
   }
@@ -45,6 +50,7 @@ class PoolsideDashboard extends HTMLElement {
     const rail = this.shadowRoot.querySelector(".rail");
     if (!mode) {
       rail.innerHTML = "";
+      this.shadowRoot.querySelector(".summary-grid").innerHTML = '<div class="notice">Poolside status is unavailable.</div>';
       this.shadowRoot.querySelector(".diagnostic-rows").innerHTML =
         '<div class="notice">No active-body selector was found. Reload the Poolside integration.</div>';
       this.shadowRoot.querySelector(".diagnostics").hidden = false;
@@ -79,9 +85,32 @@ class PoolsideDashboard extends HTMLElement {
       if (selected === "pool") pool = discovered.controls;
       if (selected === "spa") spa = discovered.controls;
     }
+    const activeControls = selected === "pool" ? pool : selected === "spa" ? spa : [];
+    this._renderSummary(mode, activeControls, diagnostics);
     this._renderEntities("pool", selected === "pool" ? pool : []);
     this._renderEntities("spa", selected === "spa" ? spa : []);
     this._renderDiagnostics(diagnostics);
+  }
+
+  _renderSummary(mode, controls, diagnostics) {
+    const states = [...diagnostics, ...controls].map((id) => this._hass.states[id]).filter(Boolean);
+    const findValue = (pattern) => {
+      const match = diagnostics.map((id) => this._hass.states[id]).find((state) => state && pattern.test(`${state.attributes.friendly_name || ""} ${state.entity_id || ""}`.toLowerCase()) && !["unavailable", "unknown"].includes(state.state));
+      return match ? `${match.state} ${match.attributes.unit_of_measurement || ""}`.trim() : "—";
+    };
+    const active = states.filter((state) => state.state === "on").length;
+    const unavailable = states.filter((state) => ["unavailable", "unknown"].includes(state.state)).length;
+    const heater = controls.find((id) => /heater/i.test(this._hass.states[id]?.attributes?.friendly_name || id));
+    const heaterState = heater ? this._hass.states[heater].state : "—";
+    const metrics = [
+      ["Mode", mode.state || "—"],
+      ["Water temperature", findValue(/water.*temp|temp.*water|temperature/)],
+      ["Pump / motor", findValue(/rpm|speed|flow/)],
+      ["Heater", heaterState],
+      ["Active controls", `${active}/${controls.length || 0}`],
+      ["Unavailable", String(unavailable)],
+    ];
+    this.shadowRoot.querySelector(".summary-grid").innerHTML = metrics.map(([label, value]) => `<div class="metric"><span class="metric-label">${this._escape(label)}</span><span class="metric-value">${this._escape(value)}</span></div>`).join("");
   }
 
   _renderEntities(sectionName, entityIds) {
