@@ -28,13 +28,20 @@ class PoolsideRuntimeData:
 type PoolsideConfigEntry = ConfigEntry[PoolsideRuntimeData]
 
 
+async def _async_register_frontend_assets(hass: HomeAssistant) -> None:
+    """Register bundled frontend assets when the frontend stack is ready."""
+    www = Path(__file__).parent / "www"
+    if hass.http is not None:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig("/poolside", str(www), cache_headers=False)]
+        )
+    if "frontend_extra_module_url" in hass.data:
+        add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+
+
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:
     """Register bundled frontend assets on the local Home Assistant HTTP server."""
-    www = Path(__file__).parent / "www"
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig("/poolside", str(www), cache_headers=False)]
-    )
-    add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+    await _async_register_frontend_assets(hass)
     return True
 
 
@@ -42,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> 
     """Set up Poolside from a UI-created config entry."""
     # Re-register after config-entry startup so an already-running frontend also
     # receives the local card resource.
-    add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
+    await _async_register_frontend_assets(hass)
     client = create_client(hass, entry.data[CONF_ACCESS_TOKEN])
     coordinator = PoolsideCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()

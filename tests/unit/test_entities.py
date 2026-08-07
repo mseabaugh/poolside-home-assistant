@@ -300,12 +300,8 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
         site.uuid,
         {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
     )
-    pool_light = replace(
-        site.controls["light-one"], raw={"BodyOfWater": "pool", "Type": "Light"}
-    )
-    spa_control = replace(
-        site.controls["filter-one"], raw={"BodyOfWater": "spa", "Type": "Filter"}
-    )
+    pool_light = replace(site.controls["light-one"], raw={"BodyOfWater": "pool", "Type": "Light"})
+    spa_control = replace(site.controls["filter-one"], raw={"BodyOfWater": "spa", "Type": "Filter"})
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -332,9 +328,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
         }
     )
     assert selector.options == ["Off", "Pool", "Spa (1)"]
-    disconnected = PoolsideActiveBodySelect(
-        coordinator, site.uuid, frozenset({"spa-2"})
-    )
+    disconnected = PoolsideActiveBodySelect(coordinator, site.uuid, frozenset({"spa-2"}))
     assert disconnected.options == ["Off", "Spa (1)"]
     coordinator.data = PoolsideData(
         {

@@ -36,9 +36,7 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideEntity]:
     for site in coordinator.data.sites.values():
         groups = sorted(site.body_connection_groups, key=lambda group: tuple(sorted(group)))
         for index, group in enumerate(groups):
-            yield PoolsideActiveBodySelect(
-                coordinator, site.uuid, group, primary=index == 0
-            )
+            yield PoolsideActiveBodySelect(coordinator, site.uuid, group, primary=index == 0)
         if site.themes:
             yield PoolsideThemeSelect(coordinator, site.uuid)
 
@@ -68,9 +66,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         )
         self.group_key = "|".join(sorted(self._body_group))
         self._attr_unique_id = (
-            f"{site_uuid}_active_body"
-            if primary
-            else f"{site_uuid}_active_body_{self.group_key}"
+            f"{site_uuid}_active_body" if primary else f"{site_uuid}_active_body_{self.group_key}"
         )
         self._attr_name = "Active body" if primary else "Active body · " + self._group_label
 
@@ -78,9 +74,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
     def _group_label(self) -> str:
         """Return a concise label for a disconnected body group."""
         site = self.coordinator.site(self.site_uuid)
-        return " / ".join(
-            site.bodies_of_water[uuid].name for uuid in sorted(self._body_group)
-        )
+        return " / ".join(site.bodies_of_water[uuid].name for uuid in sorted(self._body_group))
 
     @property
     def _options_map(self) -> dict[str, str | None]:
@@ -117,9 +111,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         """Change only the local scope; never infer or issue a remote mode write."""
         if option not in self._options_map:
             raise ValueError("Body option is not available")
-        self.coordinator.set_active_body(
-            self.site_uuid, self._options_map[option], self.group_key
-        )
+        self.coordinator.set_active_body(self.site_uuid, self._options_map[option], self.group_key)
 
 
 def _theme_options(coordinator: PoolsideCoordinator, site_uuid: str) -> dict[str, str]:
