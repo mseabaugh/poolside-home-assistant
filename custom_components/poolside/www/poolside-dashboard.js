@@ -29,11 +29,19 @@ class PoolsideDashboard extends HTMLElement {
 
   _render() {
     if (!this._hass || !this.config) return;
-    const mode = this._hass.states[this.config.mode_entity];
-    if (!mode) return;
-    const options = Array.isArray(mode.attributes.options) ? mode.attributes.options : ["Off"];
+    const modeEntity = this._resolveModeEntity();
+    const mode = modeEntity ? this._hass.states[modeEntity] : undefined;
     this.shadowRoot.querySelector("h2").textContent = this.config.name || "Poolside";
     const rail = this.shadowRoot.querySelector(".rail");
+    if (!mode) {
+      rail.innerHTML = "";
+      this.shadowRoot.querySelector(".shared").innerHTML =
+        '<div class="notice">No active-body selector was found. Reload the Poolside integration.</div>';
+      this.shadowRoot.querySelector(".pool").hidden = true;
+      this.shadowRoot.querySelector(".spa").hidden = true;
+      return;
+    }
+    const options = Array.isArray(mode.attributes.options) ? mode.attributes.options : ["Off"];
     rail.innerHTML = "";
     options.forEach((option) => {
       const button = document.createElement("button");
@@ -62,7 +70,13 @@ class PoolsideDashboard extends HTMLElement {
   async _select(option, current) {
     if (option === current) return;
     if (current && current.toLowerCase() !== "off" && option.toLowerCase() !== "off" && !window.confirm(`Switch from ${current} to ${option}? Shared valves will be adjusted by Poolside.`)) return;
-    await this._hass.callService("select", "select_option", { entity_id: this.config.mode_entity, option });
+    await this._hass.callService("select", "select_option", { entity_id: this._resolveModeEntity(), option });
+  }
+
+  _resolveModeEntity() {
+    if (this._hass.states[this.config.mode_entity]) return this.config.mode_entity;
+    return Object.keys(this._hass.states).find((entityId) =>
+      entityId.startsWith("select.") && entityId.includes("active_body"));
   }
 
   _escape(value) { return String(value).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]); }
