@@ -328,6 +328,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     selector = PoolsideActiveBodySelect(coordinator, site.uuid)
     assert selector.options == ["Off", "Pool", "Spa"]
     assert selector.current_option == "Off"
+    assert selector.device_info["model"] == "Body Group"
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -343,6 +344,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(
     assert selector.options == ["Off", "Pool", "Spa (1)"]
     disconnected = PoolsideActiveBodySelect(coordinator, site.uuid, frozenset({"spa-2"}))
     assert disconnected.options == ["Off", "Spa (1)"]
+    assert disconnected.device_info["model"] == "Body of Water"
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(

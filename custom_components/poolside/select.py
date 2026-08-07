@@ -8,8 +8,10 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from . import PoolsideConfigEntry
+from .const import DOMAIN
 from .coordinator import PoolsideCoordinator
 from .entity import PoolsideEntity, setup_dynamic_entities
 
@@ -75,6 +77,34 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         """Return a concise label for a disconnected body group."""
         site = self.coordinator.site(self.site_uuid)
         return " / ".join(site.bodies_of_water[uuid].name for uuid in sorted(self._body_group))
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Attach connected selectors to a dedicated flow-group device.
+
+        A singleton group is the disconnected-body case and stays on that
+        body's device.  Multi-body groups represent shared plumbing and must
+        not appear to be owned by one particular body.
+        """
+        if len(self._body_group) == 1:
+            body_uuid = next(iter(self._body_group))
+            site = self.coordinator.site(self.site_uuid)
+            body = site.bodies_of_water[body_uuid]
+            return DeviceInfo(
+                identifiers={(DOMAIN, f"{site.uuid}_{body.uuid}")},
+                manufacturer="Poolside Tech",
+                model="Body of Water",
+                name=body.name,
+                via_device=(DOMAIN, site.uuid),
+            )
+        site = self.coordinator.site(self.site_uuid)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{site.uuid}_body_group_{self.group_key}")},
+            manufacturer="Poolside Tech",
+            model="Body Group",
+            name=f"{self._group_label} Flow Group",
+            via_device=(DOMAIN, site.uuid),
+        )
 
     @property
     def _options_map(self) -> dict[str, str | None]:
