@@ -72,6 +72,49 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     assert await hass.config_entries.async_unload(config_entry.entry_id)
 
 
+async def test_setup_removes_superseded_heater_registry_entities(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_client: Any,
+    user_config: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native thermostat migration leaves no unavailable legacy duplicates."""
+    user_config["Sites"][0]["Controls"].append(
+        {
+            "UUID": "blower-one",
+            "Name": "Spa Blower",
+            "Type": "Blower",
+            "PowerLevelIncrements": [0, 25, 50, 75, 100],
+        }
+    )
+    registry = er.async_get(hass)
+    for domain, unique_id in (
+        ("switch", "heat-one"),
+        ("number", "heat-one_power_level"),
+        ("number", "heat-one_temperature"),
+        ("switch", "blower-one"),
+        ("number", "blower-one_power_level"),
+        ("switch", "filter-one"),
+    ):
+        registry.async_get_or_create(
+            domain,
+            DOMAIN,
+            unique_id,
+            config_entry=config_entry,
+        )
+
+    await _setup(hass, config_entry, fake_client, monkeypatch)
+
+    assert registry.async_get_entity_id("switch", DOMAIN, "heat-one") is None
+    assert registry.async_get_entity_id("number", DOMAIN, "heat-one_power_level") is None
+    assert registry.async_get_entity_id("number", DOMAIN, "heat-one_temperature") is None
+    assert registry.async_get_entity_id("switch", DOMAIN, "blower-one") is None
+    assert registry.async_get_entity_id("number", DOMAIN, "blower-one_power_level") is None
+    assert registry.async_get_entity_id("switch", DOMAIN, "filter-one") is not None
+    assert _entity_id(hass, "climate", "heat-one_climate")
+
+
 async def test_entity_services_reach_safe_transport_and_reconcile(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

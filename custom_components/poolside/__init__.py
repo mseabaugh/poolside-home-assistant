@@ -10,6 +10,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .client import PoolsideClient
 from .const import PLATFORMS
@@ -57,9 +58,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> 
     coordinator = PoolsideCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = PoolsideRuntimeData(client, coordinator)
+    _remove_legacy_native_control_entities(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.start_push()
     return True
+
+
+def _remove_legacy_native_control_entities(
+    hass: HomeAssistant,
+    entry: PoolsideConfigEntry,
+    coordinator: PoolsideCoordinator,
+) -> None:
+    """Remove superseded switch/number entities after a native-control migration.
+
+    Versions before 0.1.31 represented variable-speed blowers and setpoint-capable
+    heaters as independent switch and number entities.  Those registry entries are
+    not automatically removed when the native Fan or Climate platform takes over,
+    leaving unavailable duplicates in the device UI.  Remove only the known legacy
+    unique IDs for controls whose *discovered schema* qualifies for the replacement;
+    this never infers a new writable capability from telemetry.
+    """
+    legacy_unique_ids: set[tuple[str, str]] = set()
+    for site in coordinator.data.sites.values():
+        for control in site.all_controls.values():
+            if control.is_blower and control.supports_percentage:
+                legacy_unique_ids.update(
+                    {
+                        ("switch", control.uuid),
+                        ("number", f"{control.uuid}_power_level"),
+                    }
+                )
+            if control.supports_temperature_setpoint:
+                legacy_unique_ids.update(
+                    {
+                        ("switch", control.uuid),
+                        ("number", f"{control.uuid}_power_level"),
+                        ("number", f"{control.uuid}_temperature"),
+                    }
+                )
+
+    registry = er.async_get(hass)
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            registry_entry.platform == "poolside"
+            and (registry_entry.domain, registry_entry.unique_id) in legacy_unique_ids
+        ):
+            registry.async_remove(registry_entry.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> bool:
