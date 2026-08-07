@@ -59,6 +59,22 @@ async def test_read_validation_and_multi_site_load(
     assert ("User.getConfig", {}) in transport.calls
 
 
+async def test_high_level_read_commands_are_read_only() -> None:
+    """Maintenance/configuration reads are exposed without any write path."""
+    transport = FakeTransport(
+        {
+            "Site.getAllConfig": {"config": True},
+            "Site.getAlerts": {"alerts": []},
+            "Site.getWeather": {"weather": True},
+        }
+    )
+    client = PoolsideClient(transport)
+    assert await client.async_get_all_config("site-alpha") == {"config": True}
+    assert await client.async_get_alerts("site-alpha") == {"alerts": []}
+    assert await client.async_get_weather("site-alpha") == {"weather": True}
+    assert all(method.startswith("Site.get") for method, _ in transport.calls)
+
+
 async def test_validation_rejects_false_ping_and_empty_account() -> None:
     """A non-true ping and an account without sites fail validation."""
     false_ping = PoolsideClient(FakeTransport({"ping": False}))

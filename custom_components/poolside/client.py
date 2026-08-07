@@ -42,6 +42,18 @@ class PoolsideClient:
         """Fetch current high-level desired-state records."""
         return await self._transport.async_rpc("Site.getDesiredState", {"siteId": site_uuid})
 
+    async def async_get_all_config(self, site_uuid: str | int) -> Any:
+        """Fetch the complete site configuration used by maintenance views."""
+        return await self._transport.async_rpc("Site.getAllConfig", {"siteId": site_uuid})
+
+    async def async_get_alerts(self, site_uuid: str | int) -> Any:
+        """Fetch site alerts without exposing any write surface."""
+        return await self._transport.async_rpc("Site.getAlerts", {"siteId": site_uuid})
+
+    async def async_get_weather(self, site_uuid: str | int) -> Any:
+        """Fetch site weather data for read-only display."""
+        return await self._transport.async_rpc("Site.getWeather", {"siteId": site_uuid})
+
     async def async_validate(self) -> str:
         """Validate a credential and return a non-reversible account fingerprint."""
         await self.async_ping()
