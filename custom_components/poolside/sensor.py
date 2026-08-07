@@ -55,6 +55,8 @@ class PoolsideSensor(PoolsideEntity, SensorEntity):
         equipment = coordinator.site(site_uuid).equipment[equipment_uuid]
         self._attr_unique_id = f"{equipment_uuid}_{state_key}"
         self._attr_name = f"{equipment.name} {state_key}"
+        if state_key.casefold() in {"rpm", "speed"}:
+            self._attr_native_unit_of_measurement = "rpm"
 
     @property
     def native_value(self) -> Any:

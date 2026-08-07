@@ -58,6 +58,19 @@ def test_discovery_and_runtime_merge(
     assert not merged.controls["heat-one"].is_light
 
 
+def test_runtime_merge_accepts_installer_style_equipment_telemetry(
+    user_config: dict[str, object],
+) -> None:
+    """Installer/runtime rows can expose RPM as read-only equipment state."""
+    site = discover_sites(user_config).sites["site-alpha"]
+    merged = apply_runtime(
+        site,
+        {"states": [{"item": "pump-one", "name": "RPM", "state": "2850"}]},
+        {},
+    )
+    assert merged.equipment["pump-one"].states["RPM"] == 2850
+
+
 def test_body_relationships_only_join_explicitly_connected_bodies(
     user_config: dict[str, object],
 ) -> None:

@@ -503,6 +503,15 @@ def apply_runtime(site: Site, states_payload: Any, desired_payload: Any) -> Site
     """Merge runtime state into immutable discovered objects."""
     state_by_entity: dict[str, dict[str, Any]] = {}
     for row in _runtime_rows(states_payload, "states"):
+        # Site.getStates uses `item` as the equipment UUID and `name` as the
+        # telemetry key, while older responses use entityUuid/item.
+        legacy_entity_uuid = row.get("item")
+        if (
+            "entityUuid" not in row
+            and isinstance(legacy_entity_uuid, str)
+            and isinstance(row.get("name"), str)
+        ):
+            row = {**row, "entityUuid": legacy_entity_uuid, "item": row["name"]}
         try:
             entity_uuid = _required_identifier(row, "state")
         except ProtocolError:
