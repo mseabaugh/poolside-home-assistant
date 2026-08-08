@@ -64,11 +64,21 @@ def test_flow_procedure_requires_the_verified_poolside_shape(
     )
     assert complete.flow_procedure_complete
     assert complete.flow_procedure_reason is None
+    paired_without_optional_rows = replace(
+        incomplete,
+        flow_procedure={
+            "FlowBasedProcedures": [{"FlowUUID": "flow"}],
+            "ControlBasedProcedures": [{"FlowUUID": "flow"}],
+        },
+    )
+    assert paired_without_optional_rows.flow_procedure_complete
+    assert paired_without_optional_rows.flow_procedure_reason is None
+
     malformed = replace(
         incomplete,
         flow_procedure={
             "FlowBasedProcedures": [{"FlowUUID": "flow"}],
-            "ControlBasedProcedures": [{}],
+            "ControlBasedProcedures": [{"FlowUUID": "different-flow"}],
         },
     )
     assert not malformed.flow_procedure_complete

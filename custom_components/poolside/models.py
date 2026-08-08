@@ -295,28 +295,41 @@ class Site:
 
     @property
     def flow_procedure_complete(self) -> bool:
-        """Require the complete server procedure before exposing a writable mode."""
+        """Require an explicitly paired server procedure before exposing a mode.
+
+        HA delegates the complete pump and valve handoff to Poolside's cloud
+        procedure.  It must not parse, reconstruct, or write those physical
+        rows itself.  Requiring every optional diagnostic row made valid cloud
+        procedures unavailable.  A matching pair of server-issued flow IDs is
+        the capability proof; selecting a mode still invokes one cloud
+        procedure and never a raw equipment write.
+        """
         document = self.flow_procedure
         flows = document.get("FlowBasedProcedures")
         controls = document.get("ControlBasedProcedures")
-        return bool(
-            isinstance(flows, list)
-            and any(
-                isinstance(flow, Mapping)
-                and isinstance(flow.get("FlowUUID"), str)
-                and isinstance(flow.get("FlatFlowAndPumpSpeeds"), list)
-                and flow["FlatFlowAndPumpSpeeds"]
+        flow_uuids = (
+            {
+                flow["FlowUUID"]
                 for flow in flows
-            )
-            and isinstance(controls, list)
-            and any(
-                isinstance(control, Mapping)
-                and isinstance(control.get("FlowUUID"), str)
-                and isinstance(control.get("Procedures"), list)
-                for control in controls
-            )
-            and len(self.body_connection_groups) > 0
+                if isinstance(flow, Mapping)
+                and isinstance(flow.get("FlowUUID"), str)
+                and flow["FlowUUID"]
+            }
+            if isinstance(flows, list)
+            else set()
         )
+        control_uuids = (
+            {
+                control["FlowUUID"]
+                for control in controls
+                if isinstance(control, Mapping)
+                and isinstance(control.get("FlowUUID"), str)
+                and control["FlowUUID"]
+            }
+            if isinstance(controls, list)
+            else set()
+        )
+        return bool(flow_uuids & control_uuids and self.body_connection_groups)
 
     @property
     def flow_procedure_reason(self) -> str | None:
