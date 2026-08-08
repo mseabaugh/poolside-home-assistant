@@ -15,6 +15,7 @@ from custom_components.poolside.exceptions import (
     UnsafeWriteError,
 )
 from custom_components.poolside.models import (
+    BodyOfWater,
     ObjectKind,
     apply_runtime,
     discover_sites,
@@ -31,6 +32,47 @@ def test_find_flow_document_handles_nested_documents_and_non_mappings() -> None:
     assert find_flow_document(document)["extra"] is True
     assert find_flow_document(["ignored", {"ControlBasedProcedures": []}])
     assert find_flow_document({"records": ["ignored"]}) == {}
+
+
+def test_flow_procedure_requires_the_verified_poolside_shape(
+    user_config: dict[str, object],
+) -> None:
+    """Only a FlowUUID/procedure document enables server-side body switching."""
+    site = discover_sites(user_config).sites["site-alpha"]
+    assert site.controller_uuid == "controller-one"
+    assert replace(
+        site, equipment={}, raw={"ControllerUUID": "controller-raw"}
+    ).controller_uuid == ("controller-raw")
+    assert site.flow_procedure_reason is not None
+    assert "flow group" in site.flow_procedure_reason
+    pool = BodyOfWater("pool", "Pool", "Pool", site.uuid)
+    spa = BodyOfWater(
+        "spa", "Spa", "Spa", site.uuid, {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}}
+    )
+    incomplete = replace(site, bodies_of_water={pool.uuid: pool, spa.uuid: spa})
+    assert not incomplete.flow_procedure_complete
+    assert incomplete.flow_procedure_reason is not None
+    assert "metadata" in incomplete.flow_procedure_reason
+    complete = replace(
+        incomplete,
+        flow_procedure={
+            "FlowBasedProcedures": [
+                {"FlowUUID": "flow", "CurrentPosition": 0, "FlatFlowAndPumpSpeeds": [{}]}
+            ],
+            "ControlBasedProcedures": [{"FlowUUID": "flow", "Procedures": []}],
+        },
+    )
+    assert complete.flow_procedure_complete
+    assert complete.flow_procedure_reason is None
+    malformed = replace(
+        incomplete,
+        flow_procedure={
+            "FlowBasedProcedures": [{"FlowUUID": "flow"}],
+            "ControlBasedProcedures": [{}],
+        },
+    )
+    assert not malformed.flow_procedure_complete
+    assert malformed.flow_procedure_reason == "Poolside flow-procedure metadata is incomplete"
 
 
 def test_discovery_and_runtime_merge(

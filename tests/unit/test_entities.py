@@ -443,6 +443,9 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     assert selector.current_option == "Off"
     assert selector.device_info["model"] == "Body Group"
     assert selector.extra_state_attributes["flow_procedure_available"] is False
+    assert selector.extra_state_attributes["flow_procedure_reason"] == (
+        "Poolside has not reported flow-procedure metadata"
+    )
     assert not selector.available
     coordinator.data = PoolsideData(
         {

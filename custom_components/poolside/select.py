@@ -145,7 +145,10 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
             return {
                 "flow_procedure_available": self.coordinator.site(
                     self.site_uuid
-                ).flow_procedure_complete
+                ).flow_procedure_complete,
+                "flow_procedure_reason": self.coordinator.site(
+                    self.site_uuid
+                ).flow_procedure_reason,
             }
         return {
             "flow_procedure_available": True,

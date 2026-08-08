@@ -117,3 +117,20 @@ def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -
     assert "circulationRunning" in dashboard
     assert 'stats.push(["mdi:fan", "Circulation", circulationValue])' in dashboard
     assert "Water temperature, air temperature, pH, ORP, and chlorine (normalized)" in dashboard
+
+
+def test_dashboard_uses_home_assistant_native_control_elements() -> None:
+    """Every ordinary writable control uses HA's native switch, slider, or field."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "<ha-switch" in dashboard
+    assert "<ha-slider" in dashboard
+    assert "<ha-textfield" in dashboard
+    assert "ha-switch.toggle[data-entity]" in dashboard
+    assert "ha-switch.all-lights-toggle" in dashboard

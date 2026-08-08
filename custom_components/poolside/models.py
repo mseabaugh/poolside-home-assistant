@@ -297,14 +297,37 @@ class Site:
     def flow_procedure_complete(self) -> bool:
         """Require the complete server procedure before exposing a writable mode."""
         document = self.flow_procedure
+        flows = document.get("FlowBasedProcedures")
+        controls = document.get("ControlBasedProcedures")
         return bool(
-            isinstance(document.get("FlowBasedProcedures"), list)
-            and bool(document["FlowBasedProcedures"])
-            and isinstance(document.get("ControlBasedProcedures"), list)
-            and bool(document["ControlBasedProcedures"])
-            and self.controller_uuid
+            isinstance(flows, list)
+            and any(
+                isinstance(flow, Mapping)
+                and isinstance(flow.get("FlowUUID"), str)
+                and isinstance(flow.get("FlatFlowAndPumpSpeeds"), list)
+                and flow["FlatFlowAndPumpSpeeds"]
+                for flow in flows
+            )
+            and isinstance(controls, list)
+            and any(
+                isinstance(control, Mapping)
+                and isinstance(control.get("FlowUUID"), str)
+                and isinstance(control.get("Procedures"), list)
+                for control in controls
+            )
             and len(self.body_connection_groups) > 0
         )
+
+    @property
+    def flow_procedure_reason(self) -> str | None:
+        """Return a non-sensitive reason when safe mode selection is unavailable."""
+        if self.flow_procedure_complete:
+            return None
+        if not self.body_connection_groups:
+            return "Poolside has not reported a connected body-of-water flow group"
+        if not self.flow_procedure:
+            return "Poolside has not reported flow-procedure metadata"
+        return "Poolside flow-procedure metadata is incomplete"
 
 
 @dataclass(frozen=True, slots=True)

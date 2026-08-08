@@ -101,9 +101,10 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
                     and str(control.desired.get("Status", "")).lower() in _ACTIVE_FLOW_STATUSES
                 }
                 group_key = "|".join(sorted(group))
-                self._active_bodies[(site.uuid, group_key)] = (
-                    next(iter(active_bodies)) if len(active_bodies) == 1 else None
-                )
+                if len(active_bodies) == 1:
+                    self._active_bodies[(site.uuid, group_key)] = next(iter(active_bodies))
+                elif len(active_bodies) > 1:
+                    self._active_bodies[(site.uuid, group_key)] = None
 
     async def _async_update_data(self) -> PoolsideData:
         """Fetch a complete consistent account snapshot."""

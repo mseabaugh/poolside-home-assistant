@@ -122,23 +122,15 @@ class PoolsideClient:
         """
         if body_uuid is not None and body_uuid not in site.bodies_of_water:
             raise ProtocolError("Requested body is not discovered")
-        controller_uuid = site.controller_uuid
-        if controller_uuid is None:
-            raise ProtocolError("Poolside controller is not discovered")
         if not site.flow_procedure_complete:
             raise ProtocolError("Poolside flow procedure is incomplete")
+        if body_uuid is None:
+            raise ProtocolError("Poolside Off flow procedure is not verified")
         return await self._transport.async_rpc(
-            "Device.sendMessage",
+            "Site.runFlowSwitchProcedure",
             {
-                "deviceUuid": controller_uuid,
-                "payload": {
-                    "method": "runFlowSwitchProcedure",
-                    "params": {
-                        "siteId": site.remote_id,
-                        "BodyOfWaterUUID": body_uuid,
-                    },
-                    "id": str(uuid4()),
-                },
+                "siteId": site.remote_id,
+                "BodyOfWaterUUID": body_uuid,
             },
         )
 

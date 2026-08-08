@@ -139,7 +139,7 @@ async def test_flow_switch_uses_one_attendant_procedure_write(
     user_config: dict[str, Any],
 ) -> None:
     """Body switching never expands into raw filter, valve, or pump writes."""
-    transport = FakeTransport({"Device.sendMessage": True})
+    transport = FakeTransport({"Site.runFlowSwitchProcedure": True})
     client = PoolsideClient(transport)
     site = discover_sites(user_config).sites["site-alpha"]
     site = replace(
@@ -147,54 +147,55 @@ async def test_flow_switch_uses_one_attendant_procedure_write(
         bodies_of_water={
             "pool": BodyOfWater("pool", "Pool", "Pool", site.uuid),
             "spa": BodyOfWater(
-                "spa", "Spa", "Spa", site.uuid,
+                "spa",
+                "Spa",
+                "Spa",
+                site.uuid,
                 {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
             ),
         },
         flow_procedure={
-            "FlowBasedProcedures": [{"FlowUUID": "flow"}],
-            "ControlBasedProcedures": [{}],
+            "FlowBasedProcedures": [{"FlowUUID": "flow", "FlatFlowAndPumpSpeeds": [{}]}],
+            "ControlBasedProcedures": [{"FlowUUID": "flow", "Procedures": []}],
         },
     )
     assert await client.async_run_flow_switch(site, "spa") is True
     method, params = transport.calls[-1]
-    assert method == "Device.sendMessage"
+    assert method == "Site.runFlowSwitchProcedure"
     assert params == {
-        "deviceUuid": "controller-one",
-        "payload": {
-            "method": "runFlowSwitchProcedure",
-            "params": {"siteId": "site-alpha", "BodyOfWaterUUID": "spa"},
-            "id": params["payload"]["id"],
-        },
+        "siteId": "site-alpha",
+        "BodyOfWaterUUID": "spa",
     }
     assert all("setDesiredState" not in call[0] for call in transport.calls)
 
 
 async def test_flow_switch_fails_closed_without_procedure(user_config: dict[str, Any]) -> None:
     """A site without complete flow metadata cannot issue a mode write."""
-    client = PoolsideClient(FakeTransport({"Device.sendMessage": True}))
+    client = PoolsideClient(FakeTransport({"Site.runFlowSwitchProcedure": True}))
     site = discover_sites(user_config).sites["site-alpha"]
     with pytest.raises(ProtocolError, match="flow procedure"):
         await client.async_run_flow_switch(site, None)
 
 
-async def test_flow_switch_rejects_unknown_body_and_missing_controller(
+async def test_flow_switch_rejects_unknown_body_and_unverified_off_procedure(
     user_config: dict[str, Any],
 ) -> None:
     """Flow writes reject identifiers that are not discovered or not routable."""
-    transport = FakeTransport({"Device.sendMessage": True})
+    transport = FakeTransport({"Site.runFlowSwitchProcedure": True})
     client = PoolsideClient(transport)
     site = discover_sites(user_config).sites["site-alpha"]
     site = replace(
         site,
         bodies_of_water={"pool": BodyOfWater("pool", "Pool", "Pool", site.uuid)},
-        flow_procedure={"FlowBasedProcedures": [], "ControlBasedProcedures": []},
+        flow_procedure={
+            "FlowBasedProcedures": [{"FlowUUID": "flow", "FlatFlowAndPumpSpeeds": [{}]}],
+            "ControlBasedProcedures": [{"FlowUUID": "flow", "Procedures": []}],
+        },
     )
     with pytest.raises(ProtocolError, match="not discovered"):
         await client.async_run_flow_switch(site, "unknown")
-    no_controller = replace(site, equipment={})
-    with pytest.raises(ProtocolError, match="controller"):
-        await client.async_run_flow_switch(no_controller, None)
+    with pytest.raises(ProtocolError, match="Off flow"):
+        await client.async_run_flow_switch(site, None)
 
 
 async def test_push_filtering_and_site_replacement(user_config: dict[str, Any]) -> None:

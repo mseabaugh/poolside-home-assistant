@@ -183,6 +183,11 @@ async def test_refresh_syncs_active_body_only_from_unambiguous_flow_control(
         )
     )
     assert coordinator.active_body(site.uuid, "pool|spa") is None
+    coordinator._active_bodies[(site.uuid, "pool|spa")] = spa.uuid
+    coordinator._sync_confirmed_body_modes(
+        PoolsideData({site.uuid: replace(site, controls={filter_control.uuid: filter_control})})
+    )
+    assert coordinator.active_body(site.uuid, "pool|spa") == spa.uuid
     await coordinator.async_shutdown()
 
 
@@ -205,8 +210,8 @@ async def test_flow_switch_waits_for_confirmation_and_hides_body_controls(
         discovered,
         bodies_of_water={"pool": pool, "spa": spa},
         flow_procedure={
-            "FlowBasedProcedures": [{"FlowUUID": "flow"}],
-            "ControlBasedProcedures": [{}],
+            "FlowBasedProcedures": [{"FlowUUID": "flow", "FlatFlowAndPumpSpeeds": [{}]}],
+            "ControlBasedProcedures": [{"FlowUUID": "flow", "Procedures": []}],
         },
     )
     client = LoadClient(PoolsideData({site.uuid: site}))
@@ -265,7 +270,10 @@ async def test_flow_switch_fails_when_cloud_confirms_a_different_body(
     discovered = discover_sites(user_config).sites["site-alpha"]
     pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
     spa = BodyOfWater(
-        "spa", "Spa", "Spa", discovered.uuid,
+        "spa",
+        "Spa",
+        "Spa",
+        discovered.uuid,
         {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
     )
     site = replace(discovered, bodies_of_water={"pool": pool, "spa": spa})

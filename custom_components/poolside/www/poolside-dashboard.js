@@ -39,11 +39,8 @@ class PoolsideDashboard extends HTMLElement {
         .label { display:flex; min-width:0; align-items:center; gap:8px; }
         .label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
-        .toggle { position:relative; flex:0 0 auto; width:52px; height:30px; min-width:52px; padding:3px; border:1px solid var(--divider-color); border-radius:18px; background:var(--card-background-color); color:transparent; font-size:0; }
-        .toggle::before { content:""; display:block; width:22px; height:22px; border-radius:50%; background:var(--secondary-text-color); transition:transform .18s ease, background .18s ease; }
-        .toggle.active { border-color:var(--primary-color); background:var(--primary-color); }
-        .toggle.active::before { background:var(--text-primary-color); transform:translateX(22px); }
-        .slider { width:104px; accent-color:var(--primary-color); }
+        ha-switch.toggle { flex:0 0 auto; }
+        ha-slider.slider { width:104px; --ha-slider-track-color:var(--divider-color); --ha-slider-track-color-active:var(--primary-color); --ha-slider-thumb-color:var(--primary-color); }
         ha-slider.native-light-slider { display:block; width:100%; --ha-slider-track-color:var(--divider-color); --ha-slider-track-color-active:var(--primary-color); --ha-slider-thumb-color:var(--primary-color); }
         .value { min-width:44px; color:var(--secondary-text-color); font-size:.82rem; text-align:right; }
         .color { width:30px; height:28px; padding:0; border:1px solid var(--divider-color); border-radius:7px; background:transparent; }
@@ -67,9 +64,9 @@ class PoolsideDashboard extends HTMLElement {
         .light-tile { border:1px solid var(--divider-color); border-radius:12px; padding:10px; text-align:center; }
         .heater-temperature-stepper { display:grid; grid-template-columns:38px 1fr 38px; gap:7px; align-items:center; margin-top:10px; }
         .heater-temperature-stepper button { height:35px; border:1px solid var(--divider-color); border-radius:9px; color:var(--primary-text-color); background:var(--card-background-color); font-size:21px; cursor:pointer; }
-        .heater-temperature-input { width:100%; height:35px; border:1px solid var(--divider-color); border-radius:9px; color:var(--primary-text-color); background:var(--card-background-color); text-align:center; font:600 15px inherit; }
+        ha-textfield.heater-temperature-input { width:100%; --md-filled-text-field-container-color:var(--card-background-color); }
         .light-tile .color-presets { justify-content:center; margin-top:9px; }
-        .light-tile .toggle { width:52px; margin:9px auto 0; }
+        .light-tile .toggle { margin:9px auto 0; }
         .history { min-height:104px; margin-top:10px; display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:8px; }
         .history-chart { border:1px solid var(--divider-color); border-radius:10px; padding:8px; }
         .history-chart svg { width:100%; height:62px; overflow:visible; }
@@ -234,7 +231,7 @@ class PoolsideDashboard extends HTMLElement {
     const rgb = Array.isArray(state.attributes.rgb_color) ? state.attributes.rgb_color : [0, 153, 204];
     const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
     const presets = [["Red", "#ff4500"], ["Blue", "#2164f3"], ["Green", "#20d34a"], ["Purple", "#b900f5"], ["White", "#fffefa"], ["Warm", "#ffa45a"]];
-    return `<div class="light-tile"><strong>${this._escape(this._controlLabel(state))}</strong><div class="hint">${this._escape(this._status(state))}</div><ha-slider class="native-light-slider" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${this._escape(this._controlLabel(state))} brightness"></ha-slider><div class="color-presets">${presets.map(([name, value]) => `<button class="color-preset light-preset" title="${name}" aria-label="Set ${this._escape(this._controlLabel(state))} ${name}" style="background:${value}" data-entity="${entityId}" data-color="${value}"></button>`).join("")}</div><button class="toggle ${state.state === "on" ? "active" : ""}" data-entity="${entityId}">${state.state === "on" ? "On" : "Off"}</button></div>`;
+    return `<div class="light-tile"><strong>${this._escape(this._controlLabel(state))}</strong><div class="hint">${this._escape(this._status(state))}</div><ha-slider class="native-light-slider" min="0" max="255" step="1" value="${Number(state.attributes.brightness) || 0}" data-entity="${entityId}" aria-label="${this._escape(this._controlLabel(state))} brightness"></ha-slider><div class="color-presets">${presets.map(([name, value]) => `<button class="color-preset light-preset" title="${name}" aria-label="Set ${this._escape(this._controlLabel(state))} ${name}" style="background:${value}" data-entity="${entityId}" data-color="${value}"></button>`).join("")}</div>${this._nativeSwitch(entityId, state.state === "on", this._controlLabel(state))}</div>`;
   }
 
   _heaterCard(ids) {
@@ -247,7 +244,7 @@ class PoolsideDashboard extends HTMLElement {
     const name = this._controlLabel(heater || setpoint);
     const temperatureEntity = setpoint || (heater?.entity_id.startsWith("climate.") ? heater : null);
     const slider = temperatureEntity ? this._heaterTemperatureInput(temperatureEntity) : "";
-    const toggle = heater ? `<button class="toggle ${on ? "active" : ""}" data-entity="${heater.entity_id}" data-climate-next="${on ? "off" : "heat"}">${on ? "On" : "Off"}</button>` : "";
+    const toggle = heater ? this._nativeSwitch(heater.entity_id, on, name, `data-climate-next="${on ? "off" : "heat"}"`) : "";
     return `<div class="panel heater ${on ? "active" : ""}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
   }
 
@@ -257,7 +254,7 @@ class PoolsideDashboard extends HTMLElement {
     const min = climate ? Number(state.attributes.min_temp ?? 32) : Number(state.attributes.min ?? 32);
     const max = climate ? Number(state.attributes.max_temp ?? 110) : Number(state.attributes.max ?? 110);
     const entity = this._escape(state.entity_id);
-    return `<div class="heater-temperature-stepper"><button class="heater-temperature-minus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Decrease temperature">−</button><input class="heater-temperature-input" inputmode="decimal" value="${Number.isFinite(value) ? this._formatNumber(value) : min}" min="${min}" max="${max}" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="${this._escape(this._controlLabel(state))} temperature"><button class="heater-temperature-plus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Increase temperature">+</button></div><span class="value">°F · ${min}–${max} °F</span>`;
+    return `<div class="heater-temperature-stepper"><button class="heater-temperature-minus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Decrease temperature">−</button><ha-textfield class="heater-temperature-input" type="number" value="${Number.isFinite(value) ? this._formatNumber(value) : min}" min="${min}" max="${max}" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="${this._escape(this._controlLabel(state))} temperature"></ha-textfield><button class="heater-temperature-plus" data-entity="${entity}" data-domain="${climate ? "climate" : "number"}" aria-label="Increase temperature">+</button></div><span class="value">°F · ${min}–${max} °F</span>`;
   }
 
   _featureCards(ids) {
@@ -275,7 +272,7 @@ class PoolsideDashboard extends HTMLElement {
       const rate = states.find((state) => state.entity_id.startsWith("number."));
       const fan = states.find((state) => state.entity_id.startsWith("fan."));
       const on = toggle?.entity_id.startsWith("fan.") ? toggle.state === "on" : toggle?.state === "on";
-      const action = toggle ? `<button class="toggle ${on ? "active" : ""}" data-entity="${toggle.entity_id}">${on ? "On" : "Off"}</button>` : "";
+      const action = toggle ? this._nativeSwitch(toggle.entity_id, on, label) : "";
       const rateControl = fan ? this._fanInput(fan) : rate ? this._numberInput(rate, "feature-number") : "";
       return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="${this._iconFor(toggle || rate || fan, (toggle || rate || fan).entity_id)}"></ha-icon><span>${this._escape(label)}</span></div>${action}</div>${rateControl ? `<div class="feature-rate">${rateControl}</div>` : ""}</div>`;
     }).join("");
@@ -286,12 +283,12 @@ class PoolsideDashboard extends HTMLElement {
     const min = Number(state.attributes.min ?? 0);
     const max = Number(state.attributes.max ?? 100);
     const unit = /power level/i.test(this._controlLabel(state)) ? "%" : state.attributes.unit_of_measurement || "";
-    return `<input class="slider number ${className}" type="range" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))}"><span class="value">${Number.isFinite(value) ? this._escape(`${this._formatNumber(value)} ${unit}`) : "—"}</span>`;
+    return `<ha-slider class="slider number ${className}" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))}"></ha-slider><span class="value">${Number.isFinite(value) ? this._escape(`${this._formatNumber(value)} ${unit}`) : "—"}</span>`;
   }
 
   _fanInput(state) {
     const percentage = Number(state.attributes.percentage);
-    return `<input class="slider fan-percentage" type="range" min="0" max="100" step="1" value="${Number.isFinite(percentage) ? percentage : 0}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))} speed"><span class="value">${Number.isFinite(percentage) ? this._formatNumber(percentage) : "—"}%</span>`;
+    return `<ha-slider class="slider fan-percentage" min="0" max="100" step="1" value="${Number.isFinite(percentage) ? percentage : 0}" data-entity="${state.entity_id}" aria-label="${this._escape(this._controlLabel(state))} speed"></ha-slider><span class="value">${Number.isFinite(percentage) ? this._formatNumber(percentage) : "—"}%</span>`;
   }
 
   _allLightsControl(lightIds) {
@@ -304,7 +301,7 @@ class PoolsideDashboard extends HTMLElement {
     const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
     const ids = this._escape(lightIds.join(","));
     const presets = [["Aqua", "#0099cc"], ["Blue", "#2164f3"], ["Green", "#20b25b"], ["Purple", "#8e44d8"], ["Red", "#df3c3c"], ["White", "#ffffff"]];
-    return `<div class="panel all-lights"><div class="panel-title"><ha-icon icon="mdi:lightbulb-group"></ha-icon>All lights</div><div class="row"><div class="label"><span>${states.length} Poolside lights</span></div><div class="actions"><input class="slider all-lights-brightness" type="range" min="1" max="255" step="1" value="${brightest || 255}" data-lights="${ids}" aria-label="All Poolside lights brightness"><input class="color all-lights-color" type="color" value="${color}" data-lights="${ids}" aria-label="All Poolside lights color"><button class="toggle all-lights-toggle ${active ? "active" : ""}" data-lights="${ids}">${allOn ? "All off" : "All on"}</button></div></div><div class="color-presets" aria-label="All Poolside lights color presets">${presets.map(([name, value]) => `<button class="color-preset all-lights-preset" title="${name}" aria-label="Set all Poolside lights ${name}" aria-pressed="${color.toLowerCase() === value ? "true" : "false"}" style="background:${value}" data-lights="${ids}" data-color="${value}"></button>`).join("")}</div></div>`;
+    return `<div class="panel all-lights"><div class="panel-title"><ha-icon icon="mdi:lightbulb-group"></ha-icon>All lights</div><div class="row"><div class="label"><span>${states.length} Poolside lights</span></div><div class="actions"><ha-slider class="slider all-lights-brightness" min="1" max="255" step="1" value="${brightest || 255}" data-lights="${ids}" aria-label="All Poolside lights brightness"></ha-slider><input class="color all-lights-color" type="color" value="${color}" data-lights="${ids}" aria-label="All Poolside lights color"><ha-switch class="all-lights-toggle" data-lights="${ids}" aria-label="Toggle all Poolside lights" ${active ? "checked" : ""}></ha-switch></div></div><div class="color-presets" aria-label="All Poolside lights color presets">${presets.map(([name, value]) => `<button class="color-preset all-lights-preset" title="${name}" aria-label="Set all Poolside lights ${name}" aria-pressed="${color.toLowerCase() === value ? "true" : "false"}" style="background:${value}" data-lights="${ids}" data-color="${value}"></button>`).join("")}</div></div>`;
   }
 
   _renderLiveGauges(telemetry) {
@@ -352,10 +349,10 @@ class PoolsideDashboard extends HTMLElement {
       const value = Number(state.state);
       const min = Number(state.attributes.min ?? 0);
       const max = Number(state.attributes.max ?? 100);
-      return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions"><input class="slider number" type="range" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${entityId}" ${disabled}><span class="value">${Number.isFinite(value) ? this._escape(`${value} ${state.attributes.unit_of_measurement || ""}`) : "—"}</span></div></div>`;
+      return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions"><ha-slider class="slider number" min="${min}" max="${max}" step="${state.attributes.step || 1}" value="${Number.isFinite(value) ? value : min}" data-entity="${entityId}" ${disabled}></ha-slider><span class="value">${Number.isFinite(value) ? this._escape(`${value} ${state.attributes.unit_of_measurement || ""}`) : "—"}</span></div></div>`;
     }
     if (domain === "fan") {
-      return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${this._fanInput(state)}<button class="toggle ${state.state === "on" ? "active" : ""}" data-entity="${entityId}" ${disabled}>${unavailable ? "—" : state.state === "on" ? "On" : "Off"}</button></div></div>`;
+      return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${this._fanInput(state)}${this._nativeSwitch(entityId, state.state === "on", this._controlLabel(state), disabled)}</div></div>`;
     }
     const active = state.state === "on";
     const attrs = state.attributes;
@@ -364,11 +361,15 @@ class PoolsideDashboard extends HTMLElement {
     const color = `#${rgb.map((channel) => Math.max(0, Math.min(255, Number(channel) || 0)).toString(16).padStart(2, "0")).join("")}`;
     const brightness = isLight ? `<ha-slider class="native-light-slider" min="0" max="255" step="1" value="${Number(attrs.brightness) || 0}" data-entity="${entityId}" aria-label="${name} brightness" ${disabled}></ha-slider>` : "";
     const colorInput = isLight ? `<input class="color light-color" type="color" value="${color}" data-entity="${entityId}" aria-label="${name} color" ${disabled}>` : "";
-    return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${brightness}${colorInput}<button class="toggle ${active ? "active" : ""}" data-entity="${entityId}" ${disabled}>${unavailable ? "—" : active ? "On" : "Off"}</button></div></div>`;
+    return `<div class="row"><div class="label"><ha-icon icon="${icon}"></ha-icon><span>${name}</span></div><div class="actions">${brightness}${colorInput}${this._nativeSwitch(entityId, active, this._controlLabel(state), disabled)}</div></div>`;
+  }
+
+  _nativeSwitch(entityId, checked, label, disabled = "") {
+    return `<ha-switch class="toggle" data-entity="${entityId}" aria-label="Toggle ${this._escape(label)}" ${checked ? "checked" : ""} ${disabled}></ha-switch>`;
   }
 
   _wireControls(scope) {
-    scope.querySelectorAll(".toggle[data-entity]").forEach((button) => button.addEventListener("click", () => {
+    scope.querySelectorAll("ha-switch.toggle[data-entity]").forEach((button) => button.addEventListener("change", () => {
       const entityId = button.dataset.entity;
       const domain = entityId.split(".")[0];
       if (domain === "climate") return this._hass.callService("climate", "set_hvac_mode", { entity_id: entityId, hvac_mode: button.dataset.climateNext || "off" });
@@ -400,7 +401,7 @@ class PoolsideDashboard extends HTMLElement {
       const raw = button.dataset.color.slice(1);
       this._hass.callService("light", "turn_on", { entity_id: button.dataset.entity, rgb_color: [0, 2, 4].map((offset) => parseInt(raw.slice(offset, offset + 2), 16)) });
     }));
-    scope.querySelectorAll(".all-lights-toggle").forEach((button) => button.addEventListener("click", () => {
+    scope.querySelectorAll("ha-switch.all-lights-toggle").forEach((button) => button.addEventListener("change", () => {
       const entityIds = this._lightIds(button.dataset.lights);
       const allOn = entityIds.every((id) => this._hass.states[id]?.state === "on");
       this._hass.callService("light", allOn ? "turn_off" : "turn_on", { entity_id: entityIds });
