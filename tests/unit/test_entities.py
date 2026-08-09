@@ -28,6 +28,7 @@ from custom_components.poolside.fan import _entities as fan_entities
 from custom_components.poolside.light import PoolsideLight
 from custom_components.poolside.models import (
     BodyOfWater,
+    Control,
     Equipment,
     PoolsideData,
     Site,
@@ -39,13 +40,15 @@ from custom_components.poolside.number import PoolsideControlNumber, PoolsideHea
 from custom_components.poolside.number import _entities as number_entities
 from custom_components.poolside.select import (
     PoolsideActiveBodySelect,
+    PoolsideRouteSelect,
     PoolsideThemeSelect,
     _theme_options,
 )
 from custom_components.poolside.select import _entities as select_entities
 from custom_components.poolside.sensor import _entities as sensor_entities
 from custom_components.poolside.sensor import _telemetry_is_applicable
-from custom_components.poolside.switch import PoolsideSwitch
+from custom_components.poolside.switch import PoolsideRouteSwitch, PoolsideSwitch
+from custom_components.poolside.switch import _entities as switch_entities
 
 pytestmark = pytest.mark.unit
 
@@ -61,6 +64,8 @@ class StubCoordinator(PoolsideCoordinator):
         self.theme_writes: list[tuple[str, str]] = []
         self._active_bodies: dict[tuple[str, str], str | None] = {}
         self._flow_transitions: dict[tuple[str, str], dict[str, object]] = {}
+        self._dashboard_contexts: dict[tuple[str, str], str | None] = {}
+        self._route_selections: dict[tuple[str, str], str | None] = {}
         self.listener: Any = None
 
     def site(self, site_uuid: str) -> Site:
@@ -94,6 +99,80 @@ def _coordinator(
 ) -> StubCoordinator:
     site = discover_sites(user_config).sites["site-alpha"]
     return StubCoordinator(apply_runtime(site, states_payload, desired_payload))
+
+
+def _route_coordinator(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> tuple[StubCoordinator, str]:
+    """Build a synthetic Pool/Spa feature-route topology for entity boundary tests."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    pool = BodyOfWater("pool", "Pool", "Pool", site.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        site.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    spillover = Control(
+        "spillover-control",
+        "Feature Spillover",
+        "WaterFeature",
+        site.uuid,
+        desired={"Status": "ON", "PowerLevel": 60},
+        raw={
+            "BodyOfWater": pool.uuid,
+            "ControlGroupUUID": "feature-group",
+            "WaterFeature": True,
+            "PowerLevelIncrements": [0, 50, 100],
+        },
+    )
+    bubbler = replace(
+        spillover,
+        uuid="bubbler-control",
+        name="Bubbler",
+        desired={"Status": "OFF", "PowerLevel": 35},
+    )
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                bodies_of_water={pool.uuid: pool, spa.uuid: spa},
+                controls={spillover.uuid: spillover, bubbler.uuid: bubbler},
+                flow_procedure={
+                    "ControlBasedProcedures": [
+                        {
+                            "FlowUUID": "feature-flow",
+                            "Procedures": [
+                                {"ControlUUID": spillover.uuid},
+                                {"ControlUUID": bubbler.uuid},
+                            ],
+                        }
+                    ],
+                    "FlowBasedProcedures": [
+                        {
+                            "FlowUUID": "feature-flow",
+                            "FlatFlowAndPumpSpeeds": [
+                                {
+                                    "FlatFlow": {
+                                        "Pump": "feature-pump",
+                                        "Return": [{"ActuatorUUID": "feature-return"}],
+                                    }
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        }
+    )
+    coordinator.async_update_listeners = lambda: None  # type: ignore[method-assign]
+    group_key = coordinator.body_group_key(site.uuid, pool.uuid)
+    coordinator.set_active_body(site.uuid, pool.uuid, group_key)
+    return coordinator, coordinator.site(site.uuid).route_groups[0].key
 
 
 def test_scalar_state_filter_and_dynamic_entity_deduplication(
@@ -415,7 +494,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     states_payload: dict[str, Any],
     desired_payload: dict[str, Any],
 ) -> None:
-    """The local body selector scopes controls without issuing a remote write."""
+    """The dashboard body selector changes presentation without hiding entities."""
     coordinator = _coordinator(user_config, states_payload, desired_payload)
     site = coordinator.site("site-alpha")
     pool = BodyOfWater("pool", "Pool", "Pool", site.uuid)
@@ -446,7 +525,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     assert selector.extra_state_attributes["flow_procedure_reason"] == (
         "Poolside has not reported flow-procedure metadata"
     )
-    assert not selector.available
+    assert selector.available
     coordinator.data = PoolsideData(
         {
             site.uuid: replace(
@@ -484,11 +563,19 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     assert coordinator.active_body(site.uuid) == "pool"
     assert selector.current_option == "Pool"
     await selector.async_select_option("Pool")
+    off_calls: list[tuple[str, str]] = []
+
+    async def turn_off_flow_group(site_uuid: str, group_key: str) -> None:
+        off_calls.append((site_uuid, group_key))
+
+    coordinator.async_turn_off_flow_group = turn_off_flow_group  # type: ignore[method-assign]
+    await selector.async_select_option("Off")
+    assert off_calls == [(site.uuid, "pool|spa")]
     coordinator._flow_transitions[(site.uuid, "pool|spa")] = {"state": "Moving valves"}
     assert selector.extra_state_attributes["transition_state"] == "Moving valves"
     coordinator._flow_transitions.clear()
     assert light.available
-    assert not coordinator.body_is_visible(site.uuid, "spa")
+    assert coordinator.body_is_visible(site.uuid, "spa")
     assert coordinator.body_is_visible(site.uuid, "pond")
     coordinator.data = PoolsideData(
         {
@@ -509,6 +596,7 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     )
     with pytest.raises(ValueError, match="not available"):
         await selector.async_select_option("Unknown")
+    coordinator._dashboard_contexts.clear()
     coordinator._active_bodies[(site.uuid, "pool|spa")] = "missing"
     assert selector.current_option == "Off"
     assert coordinator.body_is_visible(site.uuid, "pond")
@@ -518,6 +606,62 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
         coordinator.set_active_body(site.uuid, None)
     coordinator.last_update_success = False
     assert not light.available
+
+
+async def test_controller_derived_route_entities_pair_selection_and_master_switch(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """A complete controller graph yields a route selector, switch, and percentages."""
+    coordinator, route_key = _route_coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    route = site.route_groups[0]
+    selector = PoolsideRouteSelect(coordinator, site.uuid, route)
+    master = PoolsideRouteSwitch(coordinator, site.uuid, route)
+    member = PoolsideSwitch(coordinator, site.uuid, "spillover-control")
+    rate = PoolsideControlNumber(coordinator, site.uuid, "spillover-control")
+    calls: list[tuple[str, str, bool]] = []
+
+    async def set_route_enabled(site_uuid: str, selected_route_key: str, *, enabled: bool) -> None:
+        calls.append((site_uuid, selected_route_key, enabled))
+
+    coordinator.async_set_route_enabled = set_route_enabled  # type: ignore[assignment,method-assign]
+    assert selector.name == "Pool water feature route"
+    assert selector.options == ["Bubbler", "Feature Spillover", "Blend"]
+    assert selector.current_option == "Feature Spillover"
+    assert selector.extra_state_attributes["route_count"] == 2
+    assert isinstance(selector.extra_state_attributes["poolside_route_group"], str)
+    assert len(str(selector.extra_state_attributes["poolside_route_group"])) == 12
+    await selector.async_select_option("Bubbler")
+    assert selector.current_option == "Bubbler"
+    with pytest.raises(ValueError, match="not available"):
+        await selector.async_select_option("Unknown")
+    await selector.async_select_option("Blend")
+    assert selector.current_option == "Blend"
+
+    assert master.name == "Pool water feature routes"
+    assert not master.is_on
+    assert master.available
+    assert master.extra_state_attributes["poolside_control_kind"] == "route_group"
+    await master.async_turn_on()
+    await master.async_turn_off()
+    await member.async_turn_on()
+    await member.async_turn_off()
+    assert calls == [
+        (site.uuid, route_key, True),
+        (site.uuid, route_key, False),
+        (site.uuid, route_key, True),
+    ]
+    assert member.extra_state_attributes["poolside_route_member"] is True
+    assert rate.extra_state_attributes["poolside_route_member"] is True
+    assert rate.native_value == 60
+    assert any(isinstance(entity, PoolsideRouteSelect) for entity in select_entities(coordinator))
+    assert any(isinstance(entity, PoolsideRouteSwitch) for entity in switch_entities(coordinator))
+
+    group_key = coordinator.body_group_key(site.uuid, "pool")
+    coordinator.set_active_body(site.uuid, "spa", group_key)
+    assert not master.available
 
 
 async def test_switch_write_round_trip(

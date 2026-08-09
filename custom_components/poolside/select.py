@@ -14,6 +14,8 @@ from . import PoolsideConfigEntry
 from .const import DOMAIN
 from .coordinator import PoolsideCoordinator
 from .entity import PoolsideEntity, setup_dynamic_entities
+from .models import RouteGroup
+from .redact import fingerprint
 
 
 async def async_setup_entry(
@@ -34,19 +36,21 @@ async def async_setup_entry(
 
 
 def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideEntity]:
-    """Build active-body and Theme selectors from each discovered site."""
+    """Build dashboard-context, route, and Theme selectors from each site."""
     for site in coordinator.data.sites.values():
         groups = sorted(site.body_connection_groups, key=lambda group: tuple(sorted(group)))
         for index, group in enumerate(groups):
             yield PoolsideActiveBodySelect(coordinator, site.uuid, group, primary=index == 0)
+        for route_group in site.route_groups:
+            yield PoolsideRouteSelect(coordinator, site.uuid, route_group)
         if site.themes:
             yield PoolsideThemeSelect(coordinator, site.uuid)
 
 
 class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
-    """Select one body through Poolside's server-side flow procedure."""
+    """Select dashboard context; confirmed flow remains controller-owned."""
 
-    _attr_name = "Active body"
+    _attr_name = "Dashboard body"
 
     def __init__(
         self,
@@ -70,7 +74,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         self._attr_unique_id = (
             f"{site_uuid}_active_body" if primary else f"{site_uuid}_active_body_{self.group_key}"
         )
-        self._attr_name = "Active body" if primary else "Active body · " + self._group_label
+        self._attr_name = "Dashboard body" if primary else "Dashboard body · " + self._group_label
 
     @property
     def _group_label(self) -> str:
@@ -130,8 +134,8 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
 
     @property
     def current_option(self) -> str:
-        """Return the selected body name, defaulting to Off."""
-        selected = self.coordinator.active_body(self.site_uuid, self.group_key)
+        """Return the dashboard body context, defaulting to Off."""
+        selected = self.coordinator.dashboard_context(self.site_uuid, self.group_key)
         for label, body_uuid in self._options_map.items():
             if body_uuid == selected:
                 return label
@@ -139,10 +143,16 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
-        """Expose safe transition diagnostics without exposing credentials."""
+        """Expose confirmed flow separately from the dashboard view."""
         transition = self.coordinator.flow_transition(self.site_uuid, self.group_key)
+        confirmed = self.coordinator.active_body(self.site_uuid, self.group_key)
+        confirmed_option = next(
+            (label for label, body_uuid in self._options_map.items() if body_uuid == confirmed),
+            "Off",
+        )
         if transition is None:
             return {
+                "confirmed_water_flow": confirmed_option,
                 "flow_procedure_available": self.coordinator.site(
                     self.site_uuid
                 ).flow_procedure_complete,
@@ -151,6 +161,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
                 ).flow_procedure_reason,
             }
         return {
+            "confirmed_water_flow": confirmed_option,
             "flow_procedure_available": True,
             "transition_state": transition["state"],
             **transition,
@@ -158,18 +169,87 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        """Fail closed when Poolside cannot prove a safe flow procedure."""
-        return super().available and self.coordinator.site(self.site_uuid).flow_procedure_complete
+        """Dashboard context does not require a writable flow procedure."""
+        return super().available
 
     async def async_select_option(self, option: str) -> None:
-        """Request one confirmed cloud flow transition."""
+        """Select context or safely turn off discovered water-flow Controls."""
         if option not in self._options_map:
             raise ValueError("Body option is not available")
         target = self._options_map[option]
         current = self.current_option
         if option == current:
             return
-        await self.coordinator.async_run_flow_switch(self.site_uuid, self.group_key, target)
+        if target is None:
+            await self.coordinator.async_turn_off_flow_group(self.site_uuid, self.group_key)
+        else:
+            self.coordinator.set_dashboard_context(self.site_uuid, self.group_key, target)
+
+
+class PoolsideRouteSelect(PoolsideEntity, SelectEntity):
+    """Select a controller-derived water-feature route without direct hardware writes."""
+
+    _attr_name = "Water feature route"
+
+    def __init__(
+        self, coordinator: PoolsideCoordinator, site_uuid: str, route_group: RouteGroup
+    ) -> None:
+        """Initialize from one validated route group."""
+        super().__init__(coordinator, site_uuid, route_group.body_uuid)
+        self.route_group = route_group
+        self._attr_unique_id = f"{route_group.key}_route"
+        body = coordinator.site(site_uuid).bodies_of_water[route_group.body_uuid]
+        self._attr_name = f"{body.name} water feature route"
+
+    @property
+    def _options_map(self) -> dict[str, str | None]:
+        """Map user labels to discovered Control identifiers."""
+        site = self.coordinator.site(self.site_uuid)
+        counts = Counter(site.all_controls[uuid].name for uuid in self.route_group.control_uuids)
+        seen: Counter[str] = Counter()
+        options: dict[str, str | None] = {}
+        for control_uuid in self.route_group.control_uuids:
+            name = site.all_controls[control_uuid].name
+            seen[name] += 1
+            options[f"{name} ({seen[name]})" if counts[name] > 1 else name] = control_uuid
+        options["Blend"] = None
+        return options
+
+    @property
+    def options(self) -> list[str]:
+        """Return discovered routes plus the controller-valid Blend option."""
+        return list(self._options_map)
+
+    @property
+    def current_option(self) -> str:
+        """Return the selected route label or Blend."""
+        selected = self.coordinator.route_selection(self.site_uuid, self.route_group.key)
+        return next(
+            (
+                label
+                for label, control_uuid in self._options_map.items()
+                if control_uuid == selected
+            ),
+            "Blend",
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose safe, display-only topology facts without remote identifiers."""
+        return {
+            "route_count": len(self.route_group.control_uuids),
+            "controller_derived": True,
+            "supports_blend": True,
+            "poolside_route_group": fingerprint(self.route_group.key)[:12],
+        }
+
+    async def async_select_option(self, option: str) -> None:
+        """Change only the route view used by the paired route switch."""
+        if option not in self._options_map:
+            raise ValueError("Route option is not available")
+        self.coordinator.set_route_selection(
+            self.site_uuid, self.route_group.key, self._options_map[option]
+        )
 
 
 def _theme_options(coordinator: PoolsideCoordinator, site_uuid: str) -> dict[str, str]:

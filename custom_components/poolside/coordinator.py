@@ -7,6 +7,7 @@ import logging
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -22,7 +23,7 @@ from .const import (
     PUSH_RECONNECT_MIN_SECONDS,
 )
 from .exceptions import AuthenticationError, CannotConnectError, PoolsideError
-from .models import PoolsideData, Site
+from .models import PoolsideData, RouteGroup, Site
 
 _LOGGER = logging.getLogger(__name__)
 _REFRESH_PUSH_METHODS = frozenset(
@@ -64,6 +65,10 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         # accepted only through the server-side procedure below.
         self._active_bodies: dict[tuple[str, str], str | None] = {}
         self._flow_transitions: dict[tuple[str, str], dict[str, object]] = {}
+        # Dashboard context is intentionally separate from confirmed hydraulic
+        # state.  Choosing Pool/Spa changes what the card renders, never valves.
+        self._dashboard_contexts: dict[tuple[str, str], str | None] = {}
+        self._route_selections: dict[tuple[str, str], str | None] = {}
 
     def _apply_pending_controls(self, data: PoolsideData) -> PoolsideData:
         """Overlay successful local writes until the cloud snapshot confirms them."""
@@ -212,21 +217,33 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         return body_uuid
 
     def active_body(self, site_uuid: str, group_key: str | None = None) -> str | None:
-        """Return the selected body for a group, or the first selected body."""
+        """Return the controller-confirmed body for a group, or the first body."""
         active = getattr(self, "_active_bodies", {})
         if group_key is not None:
             return active.get((site_uuid, group_key))
         return next((body for (site, _group), body in active.items() if site == site_uuid), None)
 
+    def dashboard_context(self, site_uuid: str, group_key: str) -> str | None:
+        """Return the card's selected body context without changing equipment."""
+        contexts = self._dashboard_contexts
+        if (site_uuid, group_key) in contexts:
+            return contexts[(site_uuid, group_key)]
+        return self.active_body(site_uuid, group_key)
+
+    def set_dashboard_context(self, site_uuid: str, group_key: str, body_uuid: str | None) -> None:
+        """Set a validated dashboard-only body context and refresh listeners."""
+        group = self._group_bodies(site_uuid, group_key)
+        if not group:
+            raise ValueError("Body group is not available")
+        if body_uuid is not None and body_uuid not in group:
+            raise ValueError("Body is not part of this group")
+        self._dashboard_contexts[(site_uuid, group_key)] = body_uuid
+        self.async_update_listeners()
+
     def body_is_visible(self, site_uuid: str, body_uuid: str | None) -> bool:
-        """Return whether a body remains visible under the selected XOR group."""
-        if body_uuid is None:
-            return True
-        group_key = self.body_group_key(site_uuid, body_uuid)
-        if self.flow_transition(site_uuid, group_key) is not None:
-            return False
-        selected = self.active_body(site_uuid, group_key)
-        return selected is None or selected == body_uuid
+        """Keep discovered entities visible; availability is not dashboard context."""
+        del site_uuid, body_uuid
+        return True
 
     def flow_transition(self, site_uuid: str, group_key: str) -> dict[str, object] | None:
         """Return the current server-side flow transition, if one is pending."""
@@ -239,12 +256,12 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         site = self.site(site_uuid)
         if body_uuid is not None and body_uuid not in self._group_bodies(site_uuid, group_key):
             raise ValueError("Body is not part of this flow group")
-        previous = self.active_body(site_uuid, group_key)
         started = datetime.now(UTC)
         transition = {
             "state": "Preparing",
-            "previous_body_uuid": previous,
-            "requested_body_uuid": body_uuid,
+            # This ID deliberately identifies only this local log/event span.
+            # Poolside/site/body identifiers must not leak into HA state or logs.
+            "correlation_id": uuid4().hex[:12],
             "started": started.isoformat(),
         }
         transitions = getattr(self, "_flow_transitions", None)
@@ -272,20 +289,16 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
             transition["state"] = "Confirmed"
             transition["completed"] = datetime.now(UTC).isoformat()
             _LOGGER.info(
-                "poolside_flow_transition outcome=confirmed site=%s previous=%s requested=%s",
-                site_uuid,
-                previous,
-                body_uuid,
+                "poolside_flow_transition outcome=confirmed correlation_id=%s duration_ms=%s",
+                transition["correlation_id"],
+                round((datetime.now(UTC) - started).total_seconds() * 1000),
             )
         except Exception as err:
             transition["state"] = "Timed out" if isinstance(err, TimeoutError) else "Failed"
             transition["error_type"] = type(err).__name__
             _LOGGER.warning(
-                "poolside_flow_transition outcome=failed site=%s previous=%s "
-                "requested=%s error_type=%s",
-                site_uuid,
-                previous,
-                body_uuid,
+                "poolside_flow_transition outcome=failed correlation_id=%s error_type=%s",
+                transition["correlation_id"],
                 type(err).__name__,
             )
             raise
@@ -305,10 +318,106 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
             frozenset(),
         )
 
+    def _route_group(self, site_uuid: str, route_key: str) -> RouteGroup | None:
+        """Resolve one discovered route group without trusting a display label."""
+        return next(
+            (group for group in self.site(site_uuid).route_groups if group.key == route_key),
+            None,
+        )
+
+    def route_selection(self, site_uuid: str, route_key: str) -> str | None:
+        """Return one selected route Control, or None for a controller Blend."""
+        route = self._route_group(site_uuid, route_key)
+        if route is None:
+            raise ValueError("Route group is not available")
+        selections = self._route_selections
+        selected = selections.get((site_uuid, route_key))
+        if selected is None and (site_uuid, route_key) in selections:
+            return None
+        if selected in route.control_uuids:
+            return selected
+        on_controls = tuple(
+            control_uuid
+            for control_uuid in route.control_uuids
+            if str(
+                self.site(site_uuid).all_controls[control_uuid].desired.get("Status", "OFF")
+            ).upper()
+            == "ON"
+        )
+        if len(on_controls) == 1:
+            return on_controls[0]
+        if len(on_controls) > 1:
+            return None
+        return route.control_uuids[0]
+
+    def set_route_selection(self, site_uuid: str, route_key: str, control_uuid: str | None) -> None:
+        """Select a route view, with None representing an allowed Blend view."""
+        route = self._route_group(site_uuid, route_key)
+        if route is None:
+            raise ValueError("Route group is not available")
+        if control_uuid is not None and control_uuid not in route.control_uuids:
+            raise ValueError("Control is not part of this route group")
+        self._route_selections[(site_uuid, route_key)] = control_uuid
+        self.async_update_listeners()
+
+    async def async_set_route_enabled(
+        self, site_uuid: str, route_key: str, *, enabled: bool
+    ) -> None:
+        """Atomically apply one verified route selection through high-level Controls."""
+        site = self.site(site_uuid)
+        route = self._route_group(site_uuid, route_key)
+        if route is None:
+            raise ValueError("Route group is not available")
+        body_group_key = self.body_group_key(site_uuid, route.body_uuid)
+        if self.active_body(site_uuid, body_group_key) != route.body_uuid:
+            raise PoolsideError("Route body is not the confirmed water-flow state")
+        selected = self.route_selection(site_uuid, route_key)
+        targets = route.control_uuids if selected is None else (selected,)
+        changes: dict[str, dict[str, object]] = {
+            control_uuid: {"Status": "ON" if enabled and control_uuid in targets else "OFF"}
+            for control_uuid in route.control_uuids
+        }
+        result = await self.client.async_set_controls(site, changes)
+        if result is False:
+            raise PoolsideError("Poolside rejected the feature-route update")
+        self._pending_controls.update(
+            {(site_uuid, control_uuid): change for control_uuid, change in changes.items()}
+        )
+        await self.async_request_refresh()
+
+    async def async_turn_off_flow_group(self, site_uuid: str, group_key: str) -> None:
+        """Turn off discovered water-flow Controls in one connected group in one batch."""
+        site = self.site(site_uuid)
+        group = self._group_bodies(site_uuid, group_key)
+        if not group:
+            raise ValueError("Body group is not available")
+        controls = tuple(
+            control
+            for control in site.flow_controls_for_group(group)
+            if str(control.desired.get("Status", "OFF")).lower() in _ACTIVE_FLOW_STATUSES
+        )
+        if any(not control.available for control in controls):
+            raise PoolsideError("A running water-flow Control is currently restricted")
+        changes: dict[str, dict[str, object]] = {
+            control.uuid: {"Status": "OFF"} for control in controls
+        }
+        if changes:
+            result = await self.client.async_set_controls(site, changes)
+            if result is False:
+                raise PoolsideError("Poolside rejected the water-flow shutdown")
+            self._pending_controls.update(
+                {(site_uuid, control_uuid): change for control_uuid, change in changes.items()}
+            )
+            await self.async_request_refresh()
+        if self.active_body(site_uuid, group_key) is not None:
+            raise PoolsideError("Poolside did not confirm water flow is off")
+        self.set_dashboard_context(site_uuid, group_key, None)
+        _LOGGER.info("poolside_flow_shutdown outcome=confirmed control_count=%s", len(changes))
+
     def set_active_body(
         self, site_uuid: str, body_uuid: str | None, group_key: str | None = None
     ) -> None:
-        """Set the local body scope and refresh dependent entity availability."""
+        """Set test/controller-confirmed state and refresh dependent entities."""
         if body_uuid is not None and body_uuid not in self.site(site_uuid).bodies_of_water:
             raise ValueError("Body of water is not available")
         active_bodies = getattr(self, "_active_bodies", None)

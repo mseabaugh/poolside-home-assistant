@@ -98,18 +98,37 @@ class PoolsideClient:
         changes: Mapping[str, Any],
     ) -> Any:
         """Merge and write one latest full desired-state record after authorization."""
-        control = self._safety.authorize_control(site, target_uuid, changes)
-        desired = dict(control.desired)
-        if not desired:
+        return await self.async_set_controls(site, {target_uuid: changes})
+
+    async def async_set_controls(
+        self,
+        site: Site,
+        changes_by_control: Mapping[str, Mapping[str, Any]],
+    ) -> Any:
+        """Write one authorized high-level desired-state batch.
+
+        This supports all-off and controller-proven route actions without
+        issuing a series of independently timed writes.  Every member is
+        re-authorized immediately before the single transport operation.
+        """
+        desired_states: list[dict[str, Any]] = []
+        for target_uuid in sorted(changes_by_control):
+            changes = changes_by_control[target_uuid]
+            control = self._safety.authorize_control(site, target_uuid, changes)
+            desired = dict(control.desired)
+            if not desired:
+                desired["ControlUUID"] = control.uuid
+            desired.update(changes)
             desired["ControlUUID"] = control.uuid
-        desired.update(changes)
-        desired["ControlUUID"] = control.uuid
+            desired_states.append(desired)
+        if not desired_states:
+            return True
         return await self._transport.async_rpc(
             "Site.setDesiredState2",
             {
                 "BatchUUID": str(uuid4()),
                 "SiteUUID": site.uuid,
-                "DesiredStates": [desired],
+                "DesiredStates": desired_states,
             },
         )
 

@@ -1,8 +1,8 @@
 /**
  * Poolside multi-state body selector.
  *
- * The card is presentation only. The Poolside select entity remains the
- * authoritative XOR state and validates every requested option.
+ * Selecting a body is presentation only. Poolside validates the only physical
+ * action exposed here: the confirmed high-level water-flow shutdown for Off.
  */
 class PoolsideBodySelector extends HTMLElement {
   static getConfigElement() {
@@ -94,7 +94,7 @@ class PoolsideBodySelector extends HTMLElement {
       </style>
       <ha-card>
         <div class="heading"></div><div class="state"></div>
-        <div class="flow-note">Shared valves and equipment follow the cloud mode procedure.</div>
+        <div class="flow-note">Pool and Spa select the dashboard view. Off safely turns off active water-flow Controls.</div>
         <div class="rail">
           <div class="fill" id="fill"></div>
           <div class="segments" id="segments"></div>
@@ -128,13 +128,15 @@ class PoolsideBodySelector extends HTMLElement {
     const names = options.filter((option) => typeof option === "string" && option.length);
     if (!names.length) return;
 
-    this._heading.textContent = this.config.name || "Active body";
+    this._heading.textContent = this.config.name || "Dashboard body";
     const unavailableReason = entity.attributes?.flow_procedure_reason;
+    const confirmedFlow = entity.attributes?.confirmed_water_flow;
     this._state.textContent = entity.attributes?.transition_state
       ? `Changing flow: ${entity.attributes.transition_state}`
       : entity.state === "unavailable" && unavailableReason
         ? `Unavailable: ${unavailableReason}`
-        : entity.state === "unknown" ? "Waiting for confirmation" : entity.state;
+        : entity.state === "unknown" ? "Waiting for confirmation"
+          : confirmedFlow ? `${entity.state} · confirmed flow: ${confirmedFlow}` : entity.state;
     const states = names.length;
     this._segments.style.gridTemplateColumns = `repeat(${states}, minmax(0, 1fr))`;
     this._segments.querySelectorAll(".segment").forEach((node) => node.remove());
@@ -173,14 +175,12 @@ class PoolsideBodySelector extends HTMLElement {
 
   async _select(option, current) {
     if (option === current) return;
-    const currentIsBody = current && current.toLowerCase() !== "off";
-    const targetIsBody = option.toLowerCase() !== "off";
-    if (currentIsBody && targetIsBody) {
-      const message = `Switch from ${current} to ${option}? This will turn off the other body of water.`;
+    if (option.toLowerCase() === "off") {
+      const message = "Turn off active water-flow Controls for this connected group? Poolside will preserve lights, saved set points, schedules, and diagnostics.";
       if (!window.confirm(message)) return;
     }
     this._confirm.hidden = false;
-    this._confirm.textContent = `Applying ${option}…`;
+    this._confirm.textContent = option.toLowerCase() === "off" ? "Requesting safe shutdown…" : `Showing ${option}…`;
     try {
       await this._hass.callService("select", "select_option", {
         entity_id: this.config.entity,
@@ -207,7 +207,7 @@ if (!window.customCards.some((card) => card.type === "poolside-body-selector")) 
   window.customCards.push({
     type: "poolside-body-selector",
     name: "Poolside Body Selector",
-    description: "Multi-state body-of-water selector with confirmation.",
+    description: "Dashboard body selector with safe water-flow shutdown.",
     preview: true,
   });
 }

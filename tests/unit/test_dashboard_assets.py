@@ -134,3 +134,39 @@ def test_dashboard_uses_home_assistant_native_control_elements() -> None:
     assert "<ha-textfield" in dashboard
     assert "ha-switch.toggle[data-entity]" in dashboard
     assert "ha-switch.all-lights-toggle" in dashboard
+
+
+def test_dashboard_keeps_body_selection_presentation_only_and_pairs_routes() -> None:
+    """Only the confirmed Off action requests a flow-control shutdown batch."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'option.toLowerCase() === "off"' in dashboard
+    assert "Turn off active water-flow Controls" in dashboard
+    assert "_routeFeatureCard(states)" in dashboard
+    assert "poolside_route_group" in dashboard
+    assert "poolside_control_kind" in dashboard
+    assert "route-select" in dashboard
+    assert 'callService("select", "select_option"' in dashboard
+
+
+def test_body_selector_shows_confirmed_flow_and_confirms_only_safe_off() -> None:
+    """The selector cannot represent a local Pool/Spa valve or pump transition."""
+    selector = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-body-selector.js"
+    ).read_text(encoding="utf-8")
+
+    assert "confirmed_water_flow" in selector
+    assert 'option.toLowerCase() === "off"' in selector
+    assert "Turn off active water-flow Controls" in selector
+    assert "Pool and Spa select the dashboard view" in selector
+    assert "Switch from ${current}" not in selector

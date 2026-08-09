@@ -60,6 +60,7 @@ class PoolsideDashboard extends HTMLElement {
         .feature-title span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .feature-rate { display:flex; align-items:center; gap:8px; margin-top:10px; }
         .feature-rate .slider { flex:1; width:auto; }
+        .route-select { min-width:130px; border:1px solid var(--divider-color); border-radius:8px; padding:7px; color:var(--primary-text-color); background:var(--card-background-color); }
         .light-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
         .light-tile { border:1px solid var(--divider-color); border-radius:12px; padding:10px; text-align:center; }
         .heater-temperature-stepper { display:grid; grid-template-columns:38px 1fr 38px; gap:7px; align-items:center; margin-top:10px; }
@@ -124,7 +125,7 @@ class PoolsideDashboard extends HTMLElement {
       const ids = Array.isArray(this.config[key]) ? this.config[key].filter((id) => this._hass.states[id] && allowed(id)) : [];
       return ids.length ? ids : fallback;
     };
-    const safeControl = (id) => ["switch", "light", "number", "fan", "climate"].includes(id.split(".")[0]);
+    const safeControl = (id) => ["switch", "light", "number", "fan", "climate", "select"].includes(id.split(".")[0]);
     // A hand-picked diagnostics list is additive.  Replacing discovery here can
     // hide the authoritative Water Thermistor and leave a pump drive temperature
     // as the only temperature available in the overview.
@@ -215,7 +216,7 @@ class PoolsideDashboard extends HTMLElement {
     const features = this._featureCards([...groups.circulation, ...groups.features, ...groups.other]);
     if (features) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:water-outline"></ha-icon>Water features</div><div class="features">${features}</div></div>`);
     if (schedules.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:calendar-clock"></ha-icon>Schedules</div>${schedules.map((schedule) => `<div class="row"><div><strong>${this._escape(schedule.title)}</strong><div class="schedule-time">${this._escape(schedule.time)}</div></div></div>`).join("")}<p class="hint">Schedules are shown from Poolside. Editing remains in the Poolside app until its conflict-safe schedule write procedure is verified.</p></div>`);
-    const resting = String(mode.state).toLowerCase() === "off" ? "Select Pool or Spa to start a water mode. Poolside will stop circulation, move the valves, and restart the selected flow." : `No Poolside equipment is currently running in ${mode.state}.`;
+    const resting = String(mode.state).toLowerCase() === "off" ? "Choose Pool or Spa to change the dashboard view. Off asks Poolside to turn off only active water-flow Controls in this connected group; lights and saved settings remain unchanged." : `No Poolside equipment is currently running in ${mode.state}.`;
     target.innerHTML = panels.length ? `<div class="home-grid">${panels.join("")}</div>` : `<div class="empty"><strong>Everything is resting.</strong><br><span class="hint">${this._escape(resting)}</span></div>`;
     this._wireControls(target);
   }
@@ -259,15 +260,24 @@ class PoolsideDashboard extends HTMLElement {
 
   _featureCards(ids) {
     const grouped = new Map();
+    const routes = new Map();
     ids.forEach((id) => {
       const state = this._hass.states[id];
       if (!this._isDisplayableControl(state)) return;
+      const routeKey = state.attributes?.poolside_route_group;
+      if (routeKey) {
+        const route = routes.get(routeKey) || [];
+        route.push(state);
+        routes.set(routeKey, route);
+        return;
+      }
       const key = this._controlLabel(state).replace(/ power level$/i, "").toLowerCase();
       const item = grouped.get(key) || { states: [], label: this._controlLabel(state).replace(/ power level$/i, "") };
       item.states.push(state);
       grouped.set(key, item);
     });
-    return [...grouped.values()].map(({ states, label }) => {
+    const routeCards = [...routes.values()].map((states) => this._routeFeatureCard(states)).filter(Boolean);
+    const controlCards = [...grouped.values()].map(({ states, label }) => {
       const toggle = states.find((state) => state.entity_id.startsWith("switch.") || state.entity_id.startsWith("fan."));
       const rate = states.find((state) => state.entity_id.startsWith("number."));
       const fan = states.find((state) => state.entity_id.startsWith("fan."));
@@ -275,7 +285,22 @@ class PoolsideDashboard extends HTMLElement {
       const action = toggle ? this._nativeSwitch(toggle.entity_id, on, label) : "";
       const rateControl = fan ? this._fanInput(fan) : rate ? this._numberInput(rate, "feature-number") : "";
       return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="${this._iconFor(toggle || rate || fan, (toggle || rate || fan).entity_id)}"></ha-icon><span>${this._escape(label)}</span></div>${action}</div>${rateControl ? `<div class="feature-rate">${rateControl}</div>` : ""}</div>`;
-    }).join("");
+    });
+    return [...routeCards, ...controlCards].join("");
+  }
+
+  _routeFeatureCard(states) {
+    const master = states.find((state) => state.attributes?.poolside_control_kind === "route_group");
+    const selection = states.find((state) => state.entity_id.startsWith("select."));
+    if (!master || !selection) return "";
+    const selected = String(selection.state || "");
+    const rates = states.filter((state) => state.entity_id.startsWith("number.") && state.attributes?.poolside_route_member)
+      .filter((state) => selected === "Blend" || this._controlLabel(state).toLowerCase().includes(selected.toLowerCase()));
+    const on = master.state === "on";
+    const choices = Array.isArray(selection.attributes.options) ? selection.attributes.options : [];
+    const options = choices.map((option) => `<option value="${this._escape(option)}" ${option === selected ? "selected" : ""}>${this._escape(option)}</option>`).join("");
+    const label = this._controlLabel(master).replace(/ routes?$/i, "");
+    return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="mdi:water-sync"></ha-icon><span>${this._escape(label)}</span></div>${this._nativeSwitch(master.entity_id, on, label)}</div><div class="row"><span class="hint">Route</span><select class="route-select" data-entity="${this._escape(selection.entity_id)}" aria-label="${this._escape(label)} route">${options}</select></div>${rates.map((state) => `<div class="feature-rate"><span class="hint">${this._escape(this._controlLabel(state).replace(/ power level$/i, ""))}</span>${this._numberInput(state, "feature-number")}</div>`).join("")}</div>`;
   }
 
   _numberInput(state, className) {
@@ -377,6 +402,7 @@ class PoolsideDashboard extends HTMLElement {
     }));
     scope.querySelectorAll(".number").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
     scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", () => this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage: Number(input.value) })));
+    scope.querySelectorAll(".route-select").forEach((input) => input.addEventListener("change", () => this._hass.callService("select", "select_option", { entity_id: input.dataset.entity, option: input.value })));
     scope.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     scope.querySelectorAll(".native-light-slider").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     const adjustTemperature = (input, delta) => {
@@ -438,6 +464,10 @@ class PoolsideDashboard extends HTMLElement {
         if (identity.includes("pool")) result.pool.push(id);
         else if (identity.includes("spa")) result.spa.push(id);
       }
+      if (domain === "select" && state.attributes?.controller_derived) {
+        if (identity.includes("pool")) result.pool.push(id);
+        else if (identity.includes("spa")) result.spa.push(id);
+      }
       if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|thermometer|ph|chlorine|orp|firmware|version|fault|online)/.test(identity)) result.telemetry.push(id);
     });
     return result;
@@ -475,7 +505,7 @@ class PoolsideDashboard extends HTMLElement {
 
   async _select(option, current, entityId) {
     if (option === current) return;
-    if (current && current.toLowerCase() !== "off" && option.toLowerCase() !== "off" && !window.confirm(`Switch from ${current} to ${option}? Poolside will stop circulation, pause while the valves move, and restart the selected flow.`)) return;
+    if (option.toLowerCase() === "off" && !window.confirm("Turn off active water-flow Controls for this connected group? Poolside will preserve lights, saved set points, schedules, and diagnostics.")) return;
     await this._hass.callService("select", "select_option", { entity_id: entityId, option });
   }
 

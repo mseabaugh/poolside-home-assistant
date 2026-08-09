@@ -15,12 +15,16 @@ Poolside cloud. No direct controller LAN protocol has been verified.
 - Dynamic discovery of sites, Controls, Combined Controls, Themes, schedules, and equipment.
 - Cloud-push updates with periodic reconciliation.
 - Read-only equipment telemetry and schedule calendar entities.
-- Safe light, binary Control, percentage Control, and Theme activation operations.
+- Safe light, binary Control, percentage Control, heater setpoint, and Theme activation operations.
+- Controller-derived water-feature route groups. A route group is enabled only when the
+  controller reports its shared Control group, body, flow procedure, pump, and valve endpoint.
+  Route actions are sent as one high-level Control batch; physical pumps and valves are never
+  addressed directly.
 - Diagnostics with recursive credential and personal-information redaction.
 - Reauthentication, reconnect handling, and explicit unavailable states.
 
-Schedule mutation, heating writes, Theme deactivation, and direct LAN control remain disabled
-until their exact protocols and concurrency behavior are confirmed.
+Schedule mutation, Theme deactivation, and direct LAN control remain disabled until their exact
+protocols and concurrency behavior are confirmed.
 
 ## Install locally
 
@@ -38,8 +42,8 @@ until their exact protocols and concurrency behavior are confirmed.
 Use Home Assistant's native cards for all ordinary controls. Poolside publishes a native
 **Light** entity for lighting, a native **Fan** entity for every verified variable-speed
 blower, a native **Climate** entity for every heater with a confirmed setpoint, read-only
-telemetry sensors, and a native Calendar. Only the exclusive pool/spa selector needs a custom
-card.
+telemetry sensors, and a native Calendar. The bundled custom cards provide the dashboard-only
+Pool/Spa view rail and the optional homeowner summary; ordinary controls remain native entities.
 
 Copy [`docs/native-dashboard.yaml`](docs/native-dashboard.yaml) into a new manual dashboard,
 then replace each example entity ID with the matching discovered entity from **Settings →
@@ -74,13 +78,18 @@ If it does not appear in the picker, add a **Manual** card and paste this YAML:
 ```yaml
 type: custom:poolside-body-selector
 entity: select.poolside_active_body
-name: Active body
+name: Dashboard body
 ```
 
 Configure the card with the Poolside body selector entity. It renders a discrete
-multi-state slider and asks for confirmation before changing from one active body
-to another. The card is presentation-only; the integration remains responsible for
-validating the authoritative state.
+multi-state slider. Selecting a body changes only the dashboard view; it cannot move
+valves, switch pumps, or bypass Poolside. Selecting **Off** asks for confirmation and then
+submits one safe batch that turns off the active high-level water-flow Controls in that
+connected group. Lights, setpoints, schedules, and telemetry remain untouched.
+
+The selector's `confirmed_water_flow` attribute is the controller-confirmed hydraulic state.
+Use it for automations that need physical-state confirmation; do not treat the dashboard body
+selection as a pump/valve command.
 
 Poolside body relationships are grouped only when the service explicitly reports
 them through `Spillover.ConnectedThings` or a cross-body `CombinedControl`. Bodies

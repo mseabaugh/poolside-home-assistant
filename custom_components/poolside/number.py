@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from . import PoolsideConfigEntry
 from .coordinator import PoolsideCoordinator
 from .entity import PoolsideEntity, setup_dynamic_entities
+from .redact import fingerprint
 from .switch import _safe_binary
 
 _MAX_POWER_LEVEL = 100
@@ -87,6 +88,17 @@ class PoolsideControlNumber(PoolsideEntity, NumberEntity):
             and _safe_binary(control)
             and control.supports_percentage
         )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Associate route member percentages without leaking controller IDs."""
+        route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
+        if route is None:
+            return {}
+        return {
+            "poolside_route_group": fingerprint(route.key)[:12],
+            "poolside_route_member": True,
+        }
 
     async def async_set_native_value(self, value: float) -> None:
         """Write an integral Poolside percentage after Home Assistant range validation."""

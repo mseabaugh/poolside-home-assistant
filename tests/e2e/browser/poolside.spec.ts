@@ -37,7 +37,7 @@ async function completeOnboarding(page: Page): Promise<void> {
   });
 }
 
-test("user adds Poolside and a UI switch round-trips through the application", async ({
+test("user adds Poolside and safely shuts down an active water-flow group", async ({
   page,
   request,
 }) => {
@@ -72,21 +72,68 @@ test("user adds Poolside and a UI switch round-trips through the application", a
   // browser tab.
   await page.reload();
   await expect(page.locator("poolside-dashboard")).toBeVisible({ timeout: 60_000 });
-  const row = page.locator("hui-toggle-entity-row").filter({ hasText: "Filter" });
-  await expect(row).toBeVisible({ timeout: 60_000 });
-  const toggle = row.locator("ha-switch");
-  await expect.poll(() => toggle.evaluate((element: any) => element.checked)).toBe(true);
-  await toggle.click();
-  await expect.poll(() => toggle.evaluate((element: any) => element.checked)).toBe(false);
 
-  const fakeUrl = process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080";
+  const bodySelector = page.locator("poolside-body-selector").last();
+  await page.locator("home-assistant").evaluate((app: any) => {
+    const hass = app.hass;
+    const entityId = Object.entries(hass.states).find(
+      ([id, state]: [string, any]) =>
+        id.startsWith("select.") && state.attributes?.friendly_name?.includes("Dashboard body"),
+    )?.[0];
+    if (!entityId) throw new Error("Poolside dashboard body selector was not created");
+    const card = document.createElement("poolside-body-selector") as any;
+    card.setConfig({ entity: entityId });
+    card.hass = hass;
+    document.body.append(card);
+  });
+  await expect(bodySelector).toBeVisible({ timeout: 60_000 });
+  await bodySelector.getByRole("button", { name: "Select Spa" }).click();
+  await expect
+    .poll(() =>
+      page.locator("home-assistant").evaluate((app: any) =>
+        Object.entries(app.hass.states).find(
+          ([id, state]: [string, any]) =>
+            id.startsWith("select.") && state.attributes?.friendly_name?.includes("Dashboard body"),
+        )?.[1]?.state,
+      ),
+    )
+    .toBe("Spa");
+  await bodySelector.evaluate((card: any) => {
+    card.hass = document.querySelector("home-assistant")?.hass;
+  });
+  await expect(bodySelector.locator(".state")).toContainText("Spa");
   await expect
     .poll(async () => {
-      const response = await request.get(`${fakeUrl}/test/state`);
+      const response = await request.get(`${process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080"}/test/state`);
       const body = await response.json();
       return body.desired.DesiredStates.find(
         (state: { ControlUUID: string }) => state.ControlUUID === "filter-one",
       ).Status;
     })
-    .toBe("OFF");
+    .toBe("ON");
+  const fakeUrl = process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080";
+  page.once("dialog", (dialog) => dialog.accept());
+  // The test-only card is appended outside HA's application shell. Dispatch the
+  // component's click event directly so the shell cannot intercept its pointer
+  // coordinates; this still executes the same card event handler a user click
+  // invokes.
+  await bodySelector.getByRole("button", { name: "Select Off" }).dispatchEvent("click");
+  await expect
+    .poll(async () => {
+      const response = await request.get(`${fakeUrl}/test/state`);
+      const body = await response.json();
+      return body.desired.DesiredStates
+        .filter((state: { ControlUUID: string }) => ["filter-one", "heat-one"].includes(state.ControlUUID))
+        .every((state: { Status: string }) => state.Status === "OFF");
+    })
+    .toBe(true);
+  await expect
+    .poll(async () => {
+      const response = await request.get(`${fakeUrl}/test/state`);
+      const body = await response.json();
+      return body.desired.DesiredStates.find(
+        (state: { ControlUUID: string }) => state.ControlUUID === "light-one",
+      ).Status;
+    })
+    .toBe("ON");
 });

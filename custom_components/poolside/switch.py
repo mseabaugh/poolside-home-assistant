@@ -11,7 +11,8 @@ from homeassistant.core import HomeAssistant
 from . import PoolsideConfigEntry
 from .coordinator import PoolsideCoordinator
 from .entity import PoolsideEntity, setup_dynamic_entities
-from .models import Control
+from .models import Control, RouteGroup
+from .redact import fingerprint
 
 _SAFE_TYPE_HINTS: Final = (
     "blower",
@@ -49,7 +50,7 @@ async def async_setup_entry(
     )
 
 
-def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSwitch]:
+def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSwitch | PoolsideRouteSwitch]:
     """Build switches for allow-listed Control classifications."""
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
@@ -60,6 +61,8 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSwitch]:
                 and not control.supports_temperature_setpoint
             ):
                 yield PoolsideSwitch(coordinator, site.uuid, control.uuid)
+        for route_group in site.route_groups:
+            yield PoolsideRouteSwitch(coordinator, site.uuid, route_group)
 
 
 class PoolsideSwitch(PoolsideEntity, SwitchEntity):
@@ -90,10 +93,92 @@ class PoolsideSwitch(PoolsideEntity, SwitchEntity):
             and _safe_binary(control)
         )
 
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Mark route members without exposing Poolside identifiers to HA state."""
+        route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
+        if route is None:
+            return {}
+        return {
+            "poolside_route_group": fingerprint(route.key)[:12],
+            "poolside_route_member": True,
+        }
+
     async def async_turn_on(self, **_kwargs: Any) -> None:
         """Turn on through the high-level Control API."""
+        route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
+        if route is not None:
+            self.coordinator.set_route_selection(self.site_uuid, route.key, self.control_uuid)
+            await self.coordinator.async_set_route_enabled(self.site_uuid, route.key, enabled=True)
+            return
         await self.async_write_control(self.control_uuid, {"Status": "ON"})
 
     async def async_turn_off(self, **_kwargs: Any) -> None:
         """Turn off through the high-level Control API."""
         await self.async_write_control(self.control_uuid, {"Status": "OFF"})
+
+
+class PoolsideRouteSwitch(PoolsideEntity, SwitchEntity):
+    """One master switch for a controller-derived multi-route feature group."""
+
+    def __init__(
+        self, coordinator: PoolsideCoordinator, site_uuid: str, route_group: RouteGroup
+    ) -> None:
+        """Initialize from a complete controller-derived route group."""
+        super().__init__(coordinator, site_uuid, route_group.body_uuid)
+        self.route_group = route_group
+        self._attr_unique_id = f"{route_group.key}_enabled"
+        body = coordinator.site(site_uuid).bodies_of_water[route_group.body_uuid]
+        self._attr_name = f"{body.name} water feature routes"
+
+    @property
+    def _selected_controls(self) -> tuple[str, ...]:
+        """Return the selected member or all members for Blend."""
+        selected = self.coordinator.route_selection(self.site_uuid, self.route_group.key)
+        return self.route_group.control_uuids if selected is None else (selected,)
+
+    @property
+    def is_on(self) -> bool:
+        """Return confirmed state for the current route selection."""
+        controls = self.coordinator.site(self.site_uuid).all_controls
+        return all(
+            str(controls[control_uuid].desired.get("Status", "OFF")).upper() == "ON"
+            for control_uuid in self._selected_controls
+        )
+
+    @property
+    def available(self) -> bool:
+        """Fail closed unless every route member and its body flow are confirmed."""
+        site = self.coordinator.site(self.site_uuid)
+        group_key = self.coordinator.body_group_key(self.site_uuid, self.route_group.body_uuid)
+        return bool(
+            super().available
+            and self.coordinator.active_body(self.site_uuid, group_key)
+            == self.route_group.body_uuid
+            and all(
+                control_uuid in site.all_controls and site.all_controls[control_uuid].available
+                for control_uuid in self.route_group.control_uuids
+            )
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose safe cardinality rather than controller IDs or equipment rows."""
+        return {
+            "poolside_route_group": fingerprint(self.route_group.key)[:12],
+            "poolside_control_kind": "route_group",
+            "route_count": len(self.route_group.control_uuids),
+            "supports_blend": True,
+        }
+
+    async def async_turn_on(self, **_kwargs: Any) -> None:
+        """Enable the selected route through one authorized control batch."""
+        await self.coordinator.async_set_route_enabled(
+            self.site_uuid, self.route_group.key, enabled=True
+        )
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
+        """Disable every member of the selected route group in one batch."""
+        await self.coordinator.async_set_route_enabled(
+            self.site_uuid, self.route_group.key, enabled=False
+        )

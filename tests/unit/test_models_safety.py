@@ -16,7 +16,14 @@ from custom_components.poolside.exceptions import (
 )
 from custom_components.poolside.models import (
     BodyOfWater,
+    Control,
     ObjectKind,
+    Site,
+    _endpoint_uuids,
+    _flows_for_control,
+    _paths_for_flow,
+    _route_groups,
+    _string_values,
     apply_runtime,
     discover_sites,
     find_flow_document,
@@ -32,6 +39,63 @@ def test_find_flow_document_handles_nested_documents_and_non_mappings() -> None:
     assert find_flow_document(document)["extra"] is True
     assert find_flow_document(["ignored", {"ControlBasedProcedures": []}])
     assert find_flow_document({"records": ["ignored"]}) == {}
+
+
+def test_route_parser_rejects_malformed_or_single_member_metadata() -> None:
+    """A partial graph cannot accidentally become a writeable water-feature route."""
+    control = Control(
+        "feature-control",
+        "Feature",
+        "WaterFeature",
+        "synthetic-site",
+        raw={
+            "BodyOfWater": "synthetic-pool",
+            "ControlGroupUUID": "feature-group",
+            "WaterFeature": True,
+        },
+    )
+    controls = {control.uuid: control}
+    assert _string_values(42) == set()
+    assert _endpoint_uuids("not-an-endpoint") == set()
+    assert _flows_for_control(
+        controls,
+        [None, {}, {"FlowUUID": 1}, {"FlowUUID": "feature-flow", "Procedures": control.uuid}],
+    ) == {control.uuid: {"feature-flow"}}
+    assert (
+        _paths_for_flow(
+            [
+                None,
+                {},
+                {"FlowUUID": "feature-flow"},
+                {"FlowUUID": "feature-flow", "FlatFlowAndPumpSpeeds": [None, {}]},
+            ]
+        )
+        == {}
+    )
+    assert (
+        _route_groups(
+            controls,
+            {
+                "ControlBasedProcedures": [
+                    {"FlowUUID": "feature-flow", "Procedures": [control.uuid]}
+                ],
+                "FlowBasedProcedures": [
+                    {
+                        "FlowUUID": "feature-flow",
+                        "FlatFlowAndPumpSpeeds": [
+                            {
+                                "FlatFlow": {
+                                    "Pump": "feature-pump",
+                                    "Return": [{"UUID": "feature-return"}],
+                                }
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        == ()
+    )
 
 
 def test_flow_procedure_requires_the_verified_poolside_shape(
@@ -189,6 +253,104 @@ def test_body_relationships_only_join_explicitly_connected_bodies(
     groups = {frozenset(group) for group in discovered.body_connection_groups}
     assert frozenset({"pool", "spa"}) in groups
     assert frozenset({"pond"}) in groups
+
+
+def test_route_groups_require_a_complete_controller_derived_feature_path() -> None:
+    """Feature routes need shared Controls, one pump, and an actuator endpoint."""
+    site_uuid = "synthetic-site"
+    body = BodyOfWater("synthetic-pool", "Pool", "Pool", site_uuid)
+    spillover = Control(
+        "spillover-control",
+        "Feature Spillover",
+        "WaterFeature",
+        site_uuid,
+        desired={"Status": "OFF", "PowerLevel": 50},
+        raw={
+            "BodyOfWater": body.uuid,
+            "ControlGroupUUID": "feature-group",
+            "WaterFeature": True,
+            "PowerLevelIncrements": [0, 50, 100],
+        },
+    )
+    bubbler = replace(
+        spillover,
+        uuid="bubbler-control",
+        name="Bubbler",
+        desired={"Status": "ON", "PowerLevel": 75},
+    )
+    document = {
+        "ControlBasedProcedures": [
+            {
+                "FlowUUID": "feature-flow",
+                "Procedures": [
+                    {"ControlUUID": spillover.uuid},
+                    {"ControlUUID": bubbler.uuid},
+                ],
+            }
+        ],
+        "FlowBasedProcedures": [
+            {
+                "FlowUUID": "feature-flow",
+                "FlatFlowAndPumpSpeeds": [
+                    {
+                        "FlatFlow": {
+                            "Pump": "feature-pump",
+                            "Return": [{"ActuatorUUID": "feature-return"}],
+                        }
+                    }
+                ],
+            }
+        ],
+    }
+    site = Site(
+        site_uuid,
+        "Synthetic",
+        controls={spillover.uuid: spillover, bubbler.uuid: bubbler},
+        bodies_of_water={body.uuid: body},
+        flow_procedure=document,
+    )
+
+    assert not replace(spillover, raw={"BodyOfWater": body.uuid}).supports_percentage
+    assert spillover.supports_percentage
+    assert spillover.is_water_flow_control
+    assert len(site.route_groups) == 1
+    route = site.route_groups[0]
+    assert route.body_uuid == body.uuid
+    assert route.control_uuids == (bubbler.uuid, spillover.uuid)
+    assert route.pump_uuid == "feature-pump"
+    assert route.actuator_uuids == ("feature-return",)
+    assert site.route_group_for_control(spillover.uuid) == route
+    assert site.route_group_for_control("missing") is None
+
+    no_endpoint = replace(
+        site,
+        flow_procedure={
+            **document,
+            "FlowBasedProcedures": [
+                {
+                    "FlowUUID": "feature-flow",
+                    "FlatFlowAndPumpSpeeds": [{"FlatFlow": {"Pump": "feature-pump"}}],
+                }
+            ],
+        },
+    )
+    ambiguous_pump = replace(
+        site,
+        flow_procedure={
+            **document,
+            "FlowBasedProcedures": [
+                {
+                    "FlowUUID": "feature-flow",
+                    "FlatFlowAndPumpSpeeds": [
+                        {"FlatFlow": {"Pump": "pump-a", "Return": [{"UUID": "return-a"}]}},
+                        {"FlatFlow": {"Pump": "pump-b", "Return": [{"UUID": "return-b"}]}},
+                    ],
+                }
+            ],
+        },
+    )
+    assert no_endpoint.route_groups == ()
+    assert ambiguous_pump.route_groups == ()
 
 
 def test_discovery_accepts_mapping_collections_and_root_site(

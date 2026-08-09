@@ -135,6 +135,44 @@ async def test_write_builds_minimum_record_when_desired_state_is_missing(
     assert params["SiteUUID"] == "site-alpha"
 
 
+async def test_authorized_control_batches_are_atomic_and_reauthorize_every_member(
+    user_config: dict[str, Any], desired_payload: dict[str, Any]
+) -> None:
+    """Route and shutdown batches preserve every desired record in one RPC."""
+    transport = FakeTransport({"Site.setDesiredState2": True})
+    client = PoolsideClient(transport)
+    site = apply_runtime(discover_sites(user_config).sites["site-alpha"], {}, desired_payload)
+
+    assert (
+        await client.async_set_controls(
+            site,
+            {
+                "filter-one": {"Status": "OFF"},
+                "light-one": {"Brightness": 40},
+            },
+        )
+        is True
+    )
+    method, params = transport.calls[-1]
+    assert method == "Site.setDesiredState2"
+    assert params is not None
+    assert [record["ControlUUID"] for record in params["DesiredStates"]] == [
+        "filter-one",
+        "light-one",
+    ]
+    assert params["DesiredStates"][0]["Status"] == "OFF"
+    assert params["DesiredStates"][1]["LightName"] == "Blue"
+    before = len(transport.calls)
+    assert await client.async_set_controls(site, {}) is True
+    assert len(transport.calls) == before
+    with pytest.raises(UnsafeWriteError):
+        await client.async_set_controls(
+            site,
+            {"filter-one": {"Status": "OFF"}, "pump-one": {"Status": "ON"}},
+        )
+    assert len(transport.calls) == before
+
+
 async def test_flow_switch_uses_one_attendant_procedure_write(
     user_config: dict[str, Any],
 ) -> None:

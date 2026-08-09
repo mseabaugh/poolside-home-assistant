@@ -28,8 +28,31 @@ class FakePoolsideService:
         self.config = _fixture("user_config.json")
         self.states = _fixture("states.json")
         self.desired = _fixture("desired.json")
+        self._add_body_topology()
         self.requests: list[dict[str, Any]] = []
         self.websockets: set[web.WebSocketResponse] = set()
+
+    def _add_body_topology(self) -> None:
+        """Add a connected Pool/Spa graph to the isolated browser fixture only."""
+        site = self.config["Sites"][0]
+        site["BodiesOfWater"] = [
+            {"UUID": "synthetic-pool", "Name": "Pool", "Type": "Pool"},
+            {
+                "UUID": "synthetic-spa",
+                "Name": "Spa",
+                "Type": "Spa",
+                "Spillover": {"ConnectedThings": [{"UUID": "synthetic-pool"}]},
+            },
+        ]
+        bodies = {
+            "light-one": "synthetic-pool",
+            "filter-one": "synthetic-pool",
+            "heat-one": "synthetic-spa",
+            "jets-restricted": "synthetic-spa",
+        }
+        for control in site["Controls"]:
+            if control["UUID"] in bodies:
+                control["BodyOfWater"] = bodies[control["UUID"]]
 
     def application(self) -> web.Application:
         """Build an aiohttp application without global mutable state."""

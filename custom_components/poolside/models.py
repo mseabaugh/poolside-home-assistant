@@ -131,8 +131,28 @@ class Control:
     @property
     def supports_percentage(self) -> bool:
         """Return whether this Control exposes a safe high-level percentage."""
-        return any(
-            key in self.raw or key in self.desired for key in ("PowerLevel", "PowerLevelIncrements")
+        return any(key in self.raw for key in ("PowerLevel", "PowerLevelIncrements", "SpeedRange"))
+
+    @property
+    def is_water_feature(self) -> bool:
+        """Return whether discovery, rather than runtime telemetry, marks a feature."""
+        value = self.raw.get("WaterFeature")
+        return bool(value) or "waterfeature" in self.type.lower().replace(" ", "")
+
+    @property
+    def is_water_flow_control(self) -> bool:
+        """Return whether this high-level Control participates in water flow.
+
+        This is only used to limit a bulk *off* request to discovered
+        application-level Controls.  It never makes equipment writable.
+        """
+        lowered = self.type.lower()
+        return not self.is_light and (
+            self.is_heating
+            or self.is_water_feature
+            or any(
+                token in lowered for token in ("blower", "cleaner", "filter", "jet", "spillover")
+            )
         )
 
     @property
@@ -169,6 +189,23 @@ class Equipment:
     site_uuid: str
     states: Mapping[str, Any] = field(default_factory=dict)
     raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RouteGroup:
+    """One controller-proven, multi-route water-feature group.
+
+    A route group is deliberately derived only from Poolside identifiers.  The
+    presentation labels of its Controls are never used to establish hydraulic
+    relationships.
+    """
+
+    key: str
+    body_uuid: str
+    control_uuids: tuple[str, ...]
+    flow_uuid: str
+    pump_uuid: str
+    actuator_uuids: tuple[str, ...]
 
 
 def find_flow_document(value: Any) -> Mapping[str, Any]:
@@ -239,6 +276,135 @@ def _body_connection_groups(
     return tuple(frozenset(group) for group in groups.values())
 
 
+def _string_values(value: Any) -> set[str]:
+    """Collect only string values from a documented nested procedure shape."""
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, Mapping):
+        return set().union(*(_string_values(item) for item in value.values())) if value else set()
+    if isinstance(value, list):
+        return set().union(*(_string_values(item) for item in value)) if value else set()
+    return set()
+
+
+def _endpoint_uuids(value: Any) -> set[str]:
+    """Read explicit actuator identifiers from Return/Suction procedure rows."""
+    result: set[str] = set()
+    if isinstance(value, Mapping):
+        for key in ("UUID", "uuid", "ItemUUID", "ActuatorUUID"):
+            item = value.get(key)
+            if isinstance(item, str) and item:
+                result.add(item)
+        for item in value.values():
+            result.update(_endpoint_uuids(item))
+    elif isinstance(value, list):
+        for item in value:
+            result.update(_endpoint_uuids(item))
+    return result
+
+
+_MIN_ROUTE_MEMBERS = 2
+
+
+def _flows_for_control(
+    controls: Mapping[str, Control], procedures: list[Any]
+) -> dict[str, set[str]]:
+    """Map a discovered Control to explicitly named flow procedures."""
+    result: dict[str, set[str]] = {}
+    for procedure in procedures:
+        if not isinstance(procedure, Mapping):
+            continue
+        flow_uuid = procedure.get("FlowUUID")
+        if not isinstance(flow_uuid, str) or not flow_uuid:
+            continue
+        for control_uuid in _string_values(procedure.get("Procedures")) & set(controls):
+            result.setdefault(control_uuid, set()).add(flow_uuid)
+    return result
+
+
+def _paths_for_flow(procedures: list[Any]) -> dict[str, set[tuple[str, tuple[str, ...]]]]:
+    """Map each flow procedure to its complete, explicit pump/actuator paths."""
+    result: dict[str, set[tuple[str, tuple[str, ...]]]] = {}
+    for procedure in procedures:
+        if not isinstance(procedure, Mapping):
+            continue
+        flow_uuid = procedure.get("FlowUUID")
+        rows = procedure.get("FlatFlowAndPumpSpeeds")
+        if not isinstance(flow_uuid, str) or not flow_uuid or not isinstance(rows, list):
+            continue
+        for row in rows:
+            flat_flow = row.get("FlatFlow") if isinstance(row, Mapping) else None
+            if not isinstance(flat_flow, Mapping):
+                continue
+            pump_uuid = flat_flow.get("Pump")
+            endpoints = _endpoint_uuids(flat_flow.get("Return")) | _endpoint_uuids(
+                flat_flow.get("Suction")
+            )
+            if isinstance(pump_uuid, str) and pump_uuid and endpoints:
+                result.setdefault(flow_uuid, set()).add((pump_uuid, tuple(sorted(endpoints))))
+    return result
+
+
+def _route_candidates(
+    controls: Mapping[str, Control], flows_for_control: Mapping[str, set[str]]
+) -> dict[tuple[str, str], list[Control]]:
+    """Group feature Controls only when their configured group/body edges agree."""
+    result: dict[tuple[str, str], list[Control]] = {}
+    for control in controls.values():
+        group_uuid = control.raw.get("ControlGroupUUID")
+        if (
+            isinstance(group_uuid, str)
+            and group_uuid
+            and control.water_body_uuid
+            and control.is_water_feature
+            and control.uuid in flows_for_control
+        ):
+            result.setdefault((group_uuid, control.water_body_uuid), []).append(control)
+    return result
+
+
+def _route_groups(
+    controls: Mapping[str, Control], document: Mapping[str, Any]
+) -> tuple[RouteGroup, ...]:
+    """Derive multi-route feature groups from complete controller metadata.
+
+    The graph requires a shared discovered ControlGroup, body, control-based
+    flow procedure, one mapped pump, and at least one actuator endpoint.  A
+    missing edge makes the candidate disappear instead of being guessed.
+    """
+    control_procedures = document.get("ControlBasedProcedures")
+    flow_procedures = document.get("FlowBasedProcedures")
+    if not isinstance(control_procedures, list) or not isinstance(flow_procedures, list):
+        return ()
+
+    flows_for_control = _flows_for_control(controls, control_procedures)
+    paths_for_flow = _paths_for_flow(flow_procedures)
+    candidates = _route_candidates(controls, flows_for_control)
+
+    result: list[RouteGroup] = []
+    for (control_group_uuid, body_uuid), members in candidates.items():
+        if len(members) < _MIN_ROUTE_MEMBERS:
+            continue
+        shared_flows = set.intersection(*(flows_for_control[member.uuid] for member in members))
+        for flow_uuid in sorted(shared_flows):
+            paths = paths_for_flow.get(flow_uuid, set())
+            if len(paths) != 1:
+                continue
+            pump_uuid, actuator_uuids = next(iter(paths))
+            member_uuids = tuple(sorted(member.uuid for member in members))
+            result.append(
+                RouteGroup(
+                    key=f"{body_uuid}|{control_group_uuid}|{flow_uuid}|{pump_uuid}",
+                    body_uuid=body_uuid,
+                    control_uuids=member_uuids,
+                    flow_uuid=flow_uuid,
+                    pump_uuid=pump_uuid,
+                    actuator_uuids=actuator_uuids,
+                )
+            )
+    return tuple(result)
+
+
 @dataclass(frozen=True, slots=True)
 class Site:
     """A complete discovered site snapshot."""
@@ -282,6 +448,25 @@ class Site:
         """Return explicit XOR groups, keeping unrelated bodies separate."""
         return _body_connection_groups(
             self.bodies_of_water, self.all_controls, self.combined_controls
+        )
+
+    @property
+    def route_groups(self) -> tuple[RouteGroup, ...]:
+        """Return only controller-proven multi-route water-feature groups."""
+        return _route_groups(self.all_controls, self.flow_procedure)
+
+    def route_group_for_control(self, control_uuid: str) -> RouteGroup | None:
+        """Return the discovered route group that owns one high-level Control."""
+        return next(
+            (group for group in self.route_groups if control_uuid in group.control_uuids), None
+        )
+
+    def flow_controls_for_group(self, group: frozenset[str]) -> tuple[Control, ...]:
+        """Return writable high-level water controls in a connected body group."""
+        return tuple(
+            control
+            for control in self.all_controls.values()
+            if control.water_body_uuid in group and control.is_water_flow_control
         )
 
     @property

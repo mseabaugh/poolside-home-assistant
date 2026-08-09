@@ -22,7 +22,9 @@ from custom_components.poolside.exceptions import (
 )
 from custom_components.poolside.models import (
     BodyOfWater,
+    Control,
     PoolsideData,
+    Site,
     apply_runtime,
     discover_sites,
 )
@@ -78,6 +80,98 @@ class HeartbeatClient(LoadClient):
         if self.heartbeat_error is not None:
             raise self.heartbeat_error
         return True
+
+
+class BatchClient(LoadClient):
+    """Injected high-level Control batch writer for route safety coverage."""
+
+    def __init__(self, result: PoolsideData, *, write_result: bool = True) -> None:
+        super().__init__(result)
+        self.write_result = write_result
+        self.batches: list[dict[str, dict[str, object]]] = []
+
+    async def async_set_controls(
+        self, _site: object, changes: dict[str, dict[str, object]]
+    ) -> bool:
+        """Record the authorized batch without simulating any equipment write."""
+        self.batches.append(changes)
+        return self.write_result
+
+
+def _route_site(user_config: dict[str, Any]) -> Site:
+    """Build a synthetic controller-derived feature route with a pool/spa group."""
+    discovered = discover_sites(user_config).sites["site-alpha"]
+    pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
+    spa = BodyOfWater(
+        "spa",
+        "Spa",
+        "Spa",
+        discovered.uuid,
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool"}]}},
+    )
+    filter_control = replace(
+        discovered.controls["filter-one"],
+        raw={"BodyOfWater": pool.uuid, "Type": "Filter"},
+        desired={"Status": "ON", "PowerLevel": 60},
+    )
+    spillover = Control(
+        "spillover-control",
+        "Feature Spillover",
+        "WaterFeature",
+        discovered.uuid,
+        desired={"Status": "ON", "PowerLevel": 65},
+        raw={
+            "BodyOfWater": pool.uuid,
+            "ControlGroupUUID": "feature-group",
+            "WaterFeature": True,
+            "PowerLevelIncrements": [0, 50, 100],
+        },
+    )
+    bubbler = replace(
+        spillover,
+        uuid="bubbler-control",
+        name="Bubbler",
+        desired={"Status": "OFF", "PowerLevel": 25},
+    )
+    light = replace(
+        discovered.controls["light-one"],
+        raw={"BodyOfWater": pool.uuid, "Type": "Light"},
+        desired={"Status": "ON"},
+    )
+    return replace(
+        discovered,
+        bodies_of_water={pool.uuid: pool, spa.uuid: spa},
+        controls={
+            filter_control.uuid: filter_control,
+            spillover.uuid: spillover,
+            bubbler.uuid: bubbler,
+            light.uuid: light,
+        },
+        flow_procedure={
+            "ControlBasedProcedures": [
+                {
+                    "FlowUUID": "feature-flow",
+                    "Procedures": [
+                        {"ControlUUID": spillover.uuid},
+                        {"ControlUUID": bubbler.uuid},
+                    ],
+                }
+            ],
+            "FlowBasedProcedures": [
+                {
+                    "FlowUUID": "feature-flow",
+                    "FlatFlowAndPumpSpeeds": [
+                        {
+                            "FlatFlow": {
+                                "Pump": "feature-pump",
+                                "Return": [{"ActuatorUUID": "feature-return"}],
+                            }
+                        }
+                    ],
+                }
+            ],
+        },
+    )
 
 
 @pytest.mark.parametrize(
@@ -191,12 +285,12 @@ async def test_refresh_syncs_active_body_only_from_unambiguous_flow_control(
     await coordinator.async_shutdown()
 
 
-async def test_flow_switch_waits_for_confirmation_and_hides_body_controls(
+async def test_flow_switch_waits_for_confirmation_without_hiding_body_controls(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     user_config: dict[str, Any],
 ) -> None:
-    """A mode request is one cloud procedure and body controls are unavailable while pending."""
+    """A mode procedure does not make independently safe entities disappear."""
     discovered = discover_sites(user_config).sites["site-alpha"]
     pool = BodyOfWater("pool", "Pool", "Pool", discovered.uuid)
     spa = BodyOfWater(
@@ -220,7 +314,7 @@ async def test_flow_switch_waits_for_confirmation_and_hides_body_controls(
     coordinator.data = PoolsideData({site.uuid: site})
     coordinator._flow_transitions = {(site.uuid, "pool|spa"): {"state": "Stopping circulation"}}
     coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
-    assert not coordinator.body_is_visible(site.uuid, "pool")
+    assert coordinator.body_is_visible(site.uuid, "pool")
     coordinator._flow_transitions = None  # type: ignore[assignment]
     coordinator._active_bodies = None  # type: ignore[assignment]
     coordinator.set_active_body(site.uuid, "pool", "pool|spa")
@@ -286,6 +380,143 @@ async def test_flow_switch_fails_when_cloud_confirms_a_different_body(
     with pytest.raises(PoolsideError, match="confirm"):
         await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
     assert coordinator.active_body(site.uuid, "pool|spa") == "pool"
+    await coordinator.async_shutdown()
+
+
+async def test_controller_derived_routes_batch_controls_without_hardware_writes(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """A feature route changes sibling Controls in one controller-proven batch."""
+    site = _route_site(user_config)
+    client = BatchClient(PoolsideData({site.uuid: site}))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    group_key = coordinator.body_group_key(site.uuid, "pool")
+    route = site.route_groups[0]
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+    coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+
+    assert coordinator.route_selection(site.uuid, route.key) == "spillover-control"
+    coordinator.set_route_selection(site.uuid, route.key, "bubbler-control")
+    await coordinator.async_set_route_enabled(site.uuid, route.key, enabled=True)
+    assert client.batches == [
+        {
+            "bubbler-control": {"Status": "ON"},
+            "spillover-control": {"Status": "OFF"},
+        }
+    ]
+    coordinator.set_route_selection(site.uuid, route.key, None)
+    await coordinator.async_set_route_enabled(site.uuid, route.key, enabled=False)
+    assert client.batches[-1] == {
+        "bubbler-control": {"Status": "OFF"},
+        "spillover-control": {"Status": "OFF"},
+    }
+
+    coordinator.set_active_body(site.uuid, "spa", group_key)
+    with pytest.raises(PoolsideError, match="confirmed water-flow"):
+        await coordinator.async_set_route_enabled(site.uuid, route.key, enabled=True)
+    assert len(client.batches) == 2
+    with pytest.raises(ValueError, match="not available"):
+        coordinator.set_route_selection(site.uuid, "missing-route", None)
+    with pytest.raises(ValueError, match="not part"):
+        coordinator.set_route_selection(site.uuid, route.key, "missing-control")
+    await coordinator.async_shutdown()
+
+
+async def test_group_shutdown_is_one_safe_batch_and_requires_cloud_confirmation(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """The dashboard Off action targets only high-level water Controls."""
+    site = _route_site(user_config)
+    client = BatchClient(PoolsideData({site.uuid: site}))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    group_key = coordinator.body_group_key(site.uuid, "pool")
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+
+    async def confirmed_refresh() -> None:
+        coordinator._active_bodies[(site.uuid, group_key)] = None
+
+    coordinator.async_request_refresh = confirmed_refresh  # type: ignore[method-assign]
+    await coordinator.async_turn_off_flow_group(site.uuid, group_key)
+    assert client.batches == [
+        {
+            "filter-one": {"Status": "OFF"},
+            "spillover-control": {"Status": "OFF"},
+        }
+    ]
+    assert "light-one" not in client.batches[0]
+    assert coordinator.dashboard_context(site.uuid, group_key) is None
+
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+    rejecting = BatchClient(PoolsideData({site.uuid: site}), write_result=False)
+    coordinator.client = rejecting  # type: ignore[assignment]
+    with pytest.raises(PoolsideError, match="rejected"):
+        await coordinator.async_turn_off_flow_group(site.uuid, group_key)
+    assert coordinator.active_body(site.uuid, group_key) == "pool"
+    await coordinator.async_shutdown()
+
+
+async def test_route_and_shutdown_validation_fail_closed_for_incomplete_state(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """Invalid graph keys, unavailable Controls, and stale flow state remain non-writable."""
+    site = _route_site(user_config)
+    client = BatchClient(PoolsideData({site.uuid: site}))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    route = site.route_groups[0]
+    group_key = coordinator.body_group_key(site.uuid, "pool")
+    assert coordinator.body_group_key(site.uuid, "missing-body") == "missing-body"
+    with pytest.raises(ValueError, match="not available"):
+        coordinator.set_dashboard_context(site.uuid, "missing-group", None)
+    with pytest.raises(ValueError, match="not part"):
+        coordinator.set_dashboard_context(site.uuid, group_key, "missing-body")
+    with pytest.raises(ValueError, match="not available"):
+        coordinator.route_selection(site.uuid, "missing-route")
+    with pytest.raises(ValueError, match="not available"):
+        await coordinator.async_set_route_enabled(site.uuid, "missing-route", enabled=True)
+    with pytest.raises(ValueError, match="not available"):
+        await coordinator.async_turn_off_flow_group(site.uuid, "missing-group")
+
+    coordinator._route_selections.clear()
+    off_controls = {
+        key: replace(control, desired={"Status": "OFF"}) for key, control in site.controls.items()
+    }
+    coordinator.data = PoolsideData({site.uuid: replace(site, controls=off_controls)})
+    assert coordinator.route_selection(site.uuid, route.key) == "bubbler-control"
+    on_controls = {
+        key: replace(control, desired={"Status": "ON"})
+        for key, control in coordinator.site(site.uuid).controls.items()
+    }
+    coordinator.data = PoolsideData({site.uuid: replace(site, controls=on_controls)})
+    assert coordinator.route_selection(site.uuid, route.key) is None
+
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+    coordinator.client = BatchClient(  # type: ignore[assignment]
+        PoolsideData({site.uuid: coordinator.site(site.uuid)}), write_result=False
+    )
+    with pytest.raises(PoolsideError, match="feature-route"):
+        await coordinator.async_set_route_enabled(site.uuid, route.key, enabled=True)
+
+    restricted_controls = dict(coordinator.site(site.uuid).controls)
+    restricted_controls["filter-one"] = replace(
+        restricted_controls["filter-one"], desired={"Status": "ON", "Restricted": True}
+    )
+    coordinator.data = PoolsideData({site.uuid: replace(site, controls=restricted_controls)})
+    with pytest.raises(PoolsideError, match="restricted"):
+        await coordinator.async_turn_off_flow_group(site.uuid, group_key)
+
+    coordinator.data = PoolsideData({site.uuid: replace(site, controls=off_controls)})
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+    with pytest.raises(PoolsideError, match="confirm water flow is off"):
+        await coordinator.async_turn_off_flow_group(site.uuid, group_key)
     await coordinator.async_shutdown()
 
 
