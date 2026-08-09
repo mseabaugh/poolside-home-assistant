@@ -5,8 +5,8 @@ class PoolsideDashboard extends HTMLElement {
       throw new Error("poolside-dashboard requires mode_entity");
     }
     this.config = config;
-    this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    root.innerHTML = `
       <style>
         :host { display:block; }
         ha-card { padding:18px; }
@@ -105,6 +105,7 @@ class PoolsideDashboard extends HTMLElement {
         <div class="mode-rail"></div>
         <div class="overview"></div>
         <div class="live-gauge-grid"></div>
+        <section class="trend section"><div class="section-head"><h3>Water and chemistry — 24 hours</h3></div><div class="history" data-history="overview"></div></section>
         <section class="home section"><div class="home-content"></div></section>
         <details class="advanced"><summary>Diagnostics</summary><p class="hint">Live read-only controller telemetry. Physical equipment and valves are never controlled here.</p><div class="gauge-grid"></div><div class="diagnostics"></div></details>
       </ha-card>`;
@@ -340,10 +341,10 @@ class PoolsideDashboard extends HTMLElement {
 
   _renderAdvanced(telemetry, chemistry = []) {
     const states = telemetry.map((id) => this._hass.states[id]).filter((state) => state && this._isUsefulTelemetry(state));
-    const chemistryPanel = chemistry.length ? `<div class="panel"><div class="panel-title"><ha-icon icon="mdi:flask-outline"></ha-icon>Water chemistry</div><ul class="metric-list">${chemistry.map((state) => `<li><span>${this._escape(this._telemetryLabel(state))}</span><strong>${this._escape(this._stateValue(state))}</strong></li>`).join("")}</ul><div class="history" data-history="chemistry"></div></div>` : "";
+    const chemistryPanel = chemistry.length ? `<div class="panel"><div class="panel-title"><ha-icon icon="mdi:flask-outline"></ha-icon>Water chemistry</div><ul class="metric-list">${chemistry.map((state) => `<li><span>${this._escape(this._telemetryLabel(state))}</span><strong>${this._escape(this._stateValue(state))}</strong></li>`).join("")}</ul></div>` : "";
     this.shadowRoot.querySelector(".gauge-grid").innerHTML = chemistryPanel;
     this.shadowRoot.querySelector(".diagnostics").innerHTML = states.length ? states.map((state) => `<div class="diagnostic-row"><span>${this._escape(this._telemetryLabel(state))}</span><span>${this._escape(this._stateValue(state))}</span></div>`).join("") : '<p class="hint">No controller telemetry has been reported.</p>';
-    this._loadHistory([...chemistry, ...this._temperatureStates(), ...this._ambientTemperatureStates()]);
+    this._loadHistory([...this._temperatureStates(), ...this._ambientTemperatureStates(), ...chemistry]);
   }
 
   _gauge(state) {
@@ -476,6 +477,9 @@ class PoolsideDashboard extends HTMLElement {
   _discoverHomeData() {
     const chemistry = [];
     const schedules = [];
+    const configuredScheduleIds = Array.isArray(this.config.schedule_entities)
+      ? this.config.schedule_entities.filter((id) => id.startsWith("calendar.") && this._hass.states[id])
+      : [];
     Object.entries(this._hass.states).forEach(([id, state]) => {
       const identity = this._identity(state);
       const isPoolside = id.includes("poolside") || /^(pool|spa)\b/.test(String(state.attributes.friendly_name || "").toLowerCase());
@@ -486,9 +490,13 @@ class PoolsideDashboard extends HTMLElement {
         if (schedule) schedules.push(schedule);
       }
     });
+    configuredScheduleIds.forEach((id) => {
+      const schedule = this._scheduleInfo(this._hass.states[id]);
+      if (schedule) schedules.push(schedule);
+    });
     return {
       chemistry: chemistry.sort((left, right) => this._telemetryLabel(left).localeCompare(this._telemetryLabel(right))).slice(0, 6),
-      schedules: schedules.sort((left, right) => left.at - right.at).slice(0, 4),
+      schedules: [...new Map(schedules.map((schedule) => [`${schedule.title}|${schedule.at}`, schedule])).values()].sort((left, right) => left.at - right.at).slice(0, 4),
     };
   }
 

@@ -18,8 +18,8 @@ class PoolsideBodySelector extends HTMLElement {
       throw new Error("poolside-body-selector requires an entity");
     }
     this.config = config;
-    this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    root.innerHTML = `
       <style>
         :host { display:block; }
         ha-card { padding: 16px; }
@@ -28,19 +28,21 @@ class PoolsideBodySelector extends HTMLElement {
         .rail {
           position: relative;
           margin-top: 18px;
-          border-radius: 16px;
-          height: 34px;
-          background: #e1e2e6;
+          border-radius: 22px;
+          height: 44px;
+          background: var(--secondary-background-color);
           overflow: hidden;
         }
         .fill {
           position: absolute;
-          inset: 0;
+          top: 4px;
+          bottom: 4px;
+          left: 0;
           right: auto;
           width: 0%;
-          background: #d4d4d9;
-          border-radius: 16px 0 0 16px;
-          transition: width 0.2s ease;
+          background: var(--primary-color);
+          border-radius: 18px;
+          transition: left 0.2s ease, width 0.2s ease;
         }
         .segments {
           position: absolute;
@@ -53,11 +55,15 @@ class PoolsideBodySelector extends HTMLElement {
           padding: 0;
           background: transparent;
           cursor: pointer;
-          font-size: 0;
+          color: var(--primary-text-color);
+          font: inherit;
+          font-size: .95rem;
           min-width: 0;
           position: relative;
           z-index: 3;
         }
+        .segment[aria-pressed="true"] { color: var(--text-primary-color); font-weight: 600; }
+        .segment:disabled { cursor: wait; opacity: .65; }
         .segment:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .thumb {
           position: absolute;
@@ -74,6 +80,8 @@ class PoolsideBodySelector extends HTMLElement {
           transform: translateX(-50%);
           transition: left 0.2s ease;
           z-index: 4;
+          pointer-events: none;
+          display: none;
         }
         .thumb-symbol {
           font-size: 11px;
@@ -102,14 +110,14 @@ class PoolsideBodySelector extends HTMLElement {
         </div>
         <div class="confirm" hidden></div>
       </ha-card>`;
-    this._heading = this.shadowRoot.querySelector(".heading");
-    this._state = this.shadowRoot.querySelector(".state");
-    this._rail = this.shadowRoot.querySelector(".rail");
-    this._segments = this.shadowRoot.querySelector("#segments");
-    this._fill = this.shadowRoot.querySelector("#fill");
-    this._thumb = this.shadowRoot.querySelector(".thumb");
-    this._thumbSymbol = this.shadowRoot.querySelector(".thumb-symbol");
-    this._confirm = this.shadowRoot.querySelector(".confirm");
+    this._heading = root.querySelector(".heading");
+    this._state = root.querySelector(".state");
+    this._rail = root.querySelector(".rail");
+    this._segments = root.querySelector("#segments");
+    this._fill = root.querySelector("#fill");
+    this._thumb = root.querySelector(".thumb");
+    this._thumbSymbol = root.querySelector(".thumb-symbol");
+    this._confirm = root.querySelector(".confirm");
     this._render();
   }
 
@@ -141,15 +149,15 @@ class PoolsideBodySelector extends HTMLElement {
     this._segments.style.gridTemplateColumns = `repeat(${states}, minmax(0, 1fr))`;
     this._segments.querySelectorAll(".segment").forEach((node) => node.remove());
     this._fill.style.width = "0%";
+    this._fill.style.left = "0%";
     this._thumb.style.left = "0%";
     this._thumbSymbol.textContent = this._symbolForOption(entity.state);
 
     const selectedIndex = Math.max(names.indexOf(entity.state), 0);
-    const maxIndex = Math.max(states - 1, 1);
-    const selectedPercent = (selectedIndex / maxIndex) * 100;
-    const fillPercent = ((selectedIndex + 1) / states) * 100;
-    this._fill.style.width = `${fillPercent}%`;
-    this._thumb.style.left = `${selectedPercent}%`;
+    const selectedPercent = (selectedIndex / states) * 100;
+    this._fill.style.width = `${100 / states}%`;
+    this._fill.style.left = `${selectedPercent}%`;
+    this._thumb.style.left = `${selectedPercent + (50 / states)}%`;
 
     names.forEach((option) => {
       const button = document.createElement("button");
@@ -159,6 +167,7 @@ class PoolsideBodySelector extends HTMLElement {
       button.setAttribute("aria-pressed", option === entity.state ? "true" : "false");
       button.style.display = "block";
       button.setAttribute("aria-label", `Select ${this._escape(option)}`);
+      button.textContent = option;
       button.addEventListener("click", () => this._select(option, entity.state));
       if (entity.attributes?.transition_state || entity.state === "unavailable") button.disabled = true;
       this._segments.appendChild(button);

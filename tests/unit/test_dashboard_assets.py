@@ -169,4 +169,29 @@ def test_body_selector_shows_confirmed_flow_and_confirms_only_safe_off() -> None
     assert 'option.toLowerCase() === "off"' in selector
     assert "Turn off active water-flow Controls" in selector
     assert "Pool and Spa select the dashboard view" in selector
+    assert "button.textContent = option" in selector
+    assert "pointer-events: none" in selector
+    assert "this._fill.style.left" in selector
+    assert "this.shadowRoot || this.attachShadow" in selector
     assert "Switch from ${current}" not in selector
+
+
+def test_dashboard_uses_a_normalized_line_trend_on_the_homeowner_view() -> None:
+    """Mixed-unit controller measurements render as a line trend, not state bars."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert 'data-history="overview"' in dashboard
+    assert "Water and chemistry — 24 hours" in dashboard
+    assert "<polyline" in dashboard
+    assert (
+        "[...this._temperatureStates(), ...this._ambientTemperatureStates(), ...chemistry]"
+        in dashboard
+    )
+    assert "schedule_entities" in dashboard
+    assert "this.shadowRoot || this.attachShadow" in dashboard

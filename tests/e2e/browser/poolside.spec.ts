@@ -71,7 +71,14 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   // its bundled card module in a fresh frontend, not only in an already warm
   // browser tab.
   await page.reload();
-  await expect(page.locator("poolside-dashboard")).toBeVisible({ timeout: 60_000 });
+  const dashboard = page.locator("poolside-dashboard");
+  await expect(dashboard).toBeVisible({ timeout: 60_000 });
+  await dashboard.evaluate((card: any) => {
+    // Home Assistant may reapply card configuration while editing or restoring
+    // a dashboard. Reconfiguration must not replace the card with a blank view.
+    card.setConfig(card.config);
+  });
+  await expect(dashboard.getByText("Water and chemistry — 24 hours", { exact: true })).toBeVisible();
 
   const bodySelector = page.locator("poolside-body-selector").last();
   await page.locator("home-assistant").evaluate((app: any) => {
@@ -83,10 +90,14 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     if (!entityId) throw new Error("Poolside dashboard body selector was not created");
     const card = document.createElement("poolside-body-selector") as any;
     card.setConfig({ entity: entityId });
+    card.setConfig({ entity: entityId, name: "Pool / Spa" });
     card.hass = hass;
     document.body.append(card);
   });
   await expect(bodySelector).toBeVisible({ timeout: 60_000 });
+  await expect(bodySelector.getByRole("button", { name: "Select Off" })).toHaveText("Off");
+  await expect(bodySelector.getByRole("button", { name: "Select Pool" })).toHaveText("Pool");
+  await expect(bodySelector.getByRole("button", { name: "Select Spa" })).toHaveText("Spa");
   await bodySelector.getByRole("button", { name: "Select Spa" }).click();
   await expect
     .poll(() =>
