@@ -47,11 +47,11 @@ async def test_setup_discovers_all_supported_safe_surfaces_and_unloads(
     await _setup(hass, config_entry, fake_client, monkeypatch)
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, config_entry.entry_id)
-    assert len(entries) == 15
+    assert len(entries) == 16
     assert _entity_id(hass, "light", "light-one")
     assert _entity_id(hass, "light", "light-combined")
     assert _entity_id(hass, "switch", "filter-one")
-    assert registry.async_get_entity_id("switch", DOMAIN, "heat-one") is None
+    assert _entity_id(hass, "switch", "heat-one")
     assert er.async_get(hass).async_get_entity_id("switch", DOMAIN, "jets-restricted") is None
     assert _entity_id(hass, "number", "filter-one_power_level")
     assert _entity_id(hass, "button", "theme-calm_activate")
@@ -106,7 +106,7 @@ async def test_setup_removes_superseded_heater_registry_entities(
 
     await _setup(hass, config_entry, fake_client, monkeypatch)
 
-    assert registry.async_get_entity_id("switch", DOMAIN, "heat-one") is None
+    assert registry.async_get_entity_id("switch", DOMAIN, "heat-one") is not None
     assert registry.async_get_entity_id("number", DOMAIN, "heat-one_power_level") is None
     assert registry.async_get_entity_id("number", DOMAIN, "heat-one_temperature") is None
     assert registry.async_get_entity_id("switch", DOMAIN, "blower-one") is None
@@ -130,10 +130,14 @@ async def test_interlocked_heater_keeps_thermostat_and_saved_setpoint_visible(
     await _setup(hass, config_entry, fake_client, monkeypatch)
 
     entity_id = _entity_id(hass, "climate", "heat-one_climate")
+    heater_switch_id = _entity_id(hass, "switch", "heat-one")
     state = hass.states.get(entity_id)
+    heater_switch = hass.states.get(heater_switch_id)
     assert state is not None
+    assert heater_switch is not None
     assert state.state == "heat"
     assert state.attributes["temperature"] is not None
+    assert heater_switch.state == "unavailable"
 
 
 async def test_entity_services_reach_safe_transport_and_reconcile(
@@ -169,6 +173,11 @@ async def test_entity_services_reach_safe_transport_and_reconcile(
             },
         ),
         (
+            "switch",
+            "turn_off",
+            {"entity_id": _entity_id(hass, "switch", "heat-one")},
+        ),
+        (
             "climate",
             "set_temperature",
             {
@@ -191,7 +200,7 @@ async def test_entity_services_reach_safe_transport_and_reconcile(
         await hass.services.async_call(domain, service, data, blocking=True)
 
     methods = [method for method, _params in fake_transport.calls]
-    assert methods.count("Site.setDesiredState2") == 4
+    assert methods.count("Site.setDesiredState2") == 5
     assert methods.count("Site.setTheme") == 2
     light_write = next(
         params

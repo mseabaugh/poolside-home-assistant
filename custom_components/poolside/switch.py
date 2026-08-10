@@ -55,10 +55,9 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideSwitch | Poo
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
             if (
-                control.available
+                (control.available or control.is_heating)
                 and _safe_binary(control)
                 and not (control.is_blower and control.supports_percentage)
-                and not control.supports_temperature_setpoint
             ):
                 yield PoolsideSwitch(coordinator, site.uuid, control.uuid)
         for route_group in site.route_groups:

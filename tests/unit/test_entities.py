@@ -498,6 +498,10 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
     assert fan.available
     assert [entity.control_uuid for entity in climate_entities(coordinator)] == ["heat-one"]
     assert [entity.control_uuid for entity in fan_entities(coordinator)] == [blower.uuid]
+    assert any(
+        isinstance(entity, PoolsideSwitch) and entity.control_uuid == "heat-one"
+        for entity in switch_entities(coordinator)
+    )
     await climate.async_set_hvac_mode(HVACMode.OFF)
     await climate.async_turn_on()
     await climate.async_turn_off()
@@ -531,6 +535,12 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
     )
     assert [entity.control_uuid for entity in climate_entities(coordinator)] == ["heat-one"]
     assert PoolsideHeaterClimate(coordinator, site.uuid, "heat-one").available
+    disabled_switch = next(
+        entity
+        for entity in switch_entities(coordinator)
+        if isinstance(entity, PoolsideSwitch) and entity.control_uuid == "heat-one"
+    )
+    assert not disabled_switch.available
     malformed = replace(
         site.controls["heat-one"], desired={"Status": "OFF", "SetPoint": "bad", "Restricted": True}
     )

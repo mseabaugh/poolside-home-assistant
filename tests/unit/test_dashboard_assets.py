@@ -130,6 +130,8 @@ def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -
     assert "native-light-slider" in dashboard
     assert "<ha-slider" in dashboard
     assert "heater-temperature-stepper" in dashboard
+    assert "const heaterSwitch" in dashboard
+    assert "const temperatureEntity = climate || setpoint" in dashboard
     assert '"set_temperature"' in dashboard
     assert "temperature-with-air" in dashboard
     assert "\\nAir ${this._stateValue(air)}" in dashboard

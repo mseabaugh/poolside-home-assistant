@@ -244,14 +244,16 @@ class PoolsideDashboard extends HTMLElement {
   _heaterCard(ids) {
     const states = ids.map((id) => this._hass.states[id]).filter((state) => this._isDisplayableControl(state));
     if (!states.length) return "";
-    const heater = states.find((state) => state.entity_id.startsWith("switch.") || state.entity_id.startsWith("climate."));
+    const heaterSwitch = states.find((state) => state.entity_id.startsWith("switch."));
+    const climate = states.find((state) => state.entity_id.startsWith("climate."));
     const setpoint = states.find((state) => state.entity_id.startsWith("number."));
+    const heater = heaterSwitch || climate;
     if (!heater && !setpoint) return "";
-    const on = heater?.entity_id.startsWith("climate.") ? heater.state === "heat" : heater?.state === "on";
-    const name = this._controlLabel(heater || setpoint);
-    const temperatureEntity = setpoint || (heater?.entity_id.startsWith("climate.") ? heater : null);
+    const on = heaterSwitch ? heaterSwitch.state === "on" : climate?.state === "heat";
+    const name = this._controlLabel(climate || heaterSwitch || setpoint);
+    const temperatureEntity = climate || setpoint;
     const slider = temperatureEntity ? this._heaterTemperatureInput(temperatureEntity) : "";
-    const toggle = heater ? this._nativeSwitch(heater.entity_id, on, name, `data-climate-next="${on ? "off" : "heat"}"`) : "";
+    const toggle = heaterSwitch ? this._nativeSwitch(heaterSwitch.entity_id, on, name) : climate ? this._nativeSwitch(climate.entity_id, on, name, `data-climate-next="${on ? "off" : "heat"}"`) : "";
     return `<div class="panel heater ${on ? "active" : ""}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
   }
 

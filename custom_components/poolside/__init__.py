@@ -95,12 +95,11 @@ def _remove_legacy_native_control_entities(
 ) -> None:
     """Remove superseded switch/number entities after a native-control migration.
 
-    Versions before 0.1.31 represented variable-speed blowers and setpoint-capable
-    heaters as independent switch and number entities.  Those registry entries are
-    not automatically removed when the native Fan or Climate platform takes over,
-    leaving unavailable duplicates in the device UI.  Remove only the known legacy
-    unique IDs for controls whose *discovered schema* qualifies for the replacement;
-    this never infers a new writable capability from telemetry.
+    Versions before 0.1.31 represented variable-speed blowers and heater setpoints
+    as independent number entities. Those registry entries are not automatically
+    removed when the native Fan or Climate platform takes over. The high-level
+    heater switch is intentionally retained alongside Climate so Home Assistant's
+    device and dashboard surfaces provide a normal on/off button.
     """
     legacy_unique_ids: set[tuple[str, str]] = set()
     for site in coordinator.data.sites.values():
@@ -115,7 +114,6 @@ def _remove_legacy_native_control_entities(
             if control.supports_temperature_setpoint:
                 legacy_unique_ids.update(
                     {
-                        ("switch", control.uuid),
                         ("number", f"{control.uuid}_power_level"),
                         ("number", f"{control.uuid}_temperature"),
                     }

@@ -134,6 +134,27 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     card.hass = document.querySelector("home-assistant")?.hass;
   });
   await expect(bodySelector.locator(".state")).toContainText("Spa");
+  await dashboard.evaluate((card: any) => {
+    card.hass = document.querySelector("home-assistant")?.hass;
+  });
+  const heaterToggle = dashboard.locator(".heater ha-switch.toggle");
+  await expect(heaterToggle).toBeVisible();
+  await expect(heaterToggle).toHaveAttribute("data-entity", /^switch\./);
+  await heaterToggle.evaluate((toggle: any) => {
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  });
+  await expect
+    .poll(async () => {
+      const response = await request.get(
+        `${process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080"}/test/state`,
+      );
+      const body = await response.json();
+      return body.desired.DesiredStates.find(
+        (state: { ControlUUID: string }) => state.ControlUUID === "heat-one",
+      ).Status;
+    })
+    .toBe("OFF");
   await expect
     .poll(async () => {
       const response = await request.get(`${process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080"}/test/state`);
