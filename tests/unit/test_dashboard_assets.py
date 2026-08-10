@@ -5,6 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_dashboard_assets_support_responsive_full_width_sections() -> None:
+    """Bundled cards and the native template fill HA's responsive sections grid."""
+    root = Path(__file__).parents[2]
+    selector = (root / "custom_components/poolside/www/poolside-body-selector.js").read_text()
+    dashboard = (root / "custom_components/poolside/www/poolside-dashboard.js").read_text()
+    native = (root / "docs/native-dashboard.yaml").read_text()
+
+    assert "getGridOptions()" in selector
+    assert "columns: 12" in selector
+    assert "getGridOptions()" in dashboard
+    assert "columns: 12" in dashboard
+    assert "type: sections" in native
+    assert "max_columns: 3" in native
+    assert "column_span: 3" in native
+    assert "columns: full" in native
+
+
 def test_dashboard_discovers_water_telemetry_alongside_configured_sensors() -> None:
     """A manual diagnostic list must not hide the authoritative water sensor."""
     dashboard = (

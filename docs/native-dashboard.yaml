@@ -3,16 +3,23 @@ views:
   - title: Poolside
     path: poolside
     icon: mdi:pool
-    cards:
-      # The only custom element: HA has no native exclusive multi-body selector.
-      - type: custom:poolside-body-selector
-        entity: select.poolside_active_body
-        name: Active body
+    type: sections
+    max_columns: 3
+    dense_section_placement: true
+    sections:
+      # The mode rail spans the desktop view. HA collapses sections to a
+      # single column automatically on narrow tablet and phone displays.
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:poolside-body-selector
+            entity: select.poolside_active_body
+            name: Active body
+            grid_options:
+              columns: full
 
       - type: grid
         title: Spa controls
-        columns: 2
-        square: false
         cards:
           # Use each entity only when it is discovered for this installation.
           - type: thermostat
@@ -34,8 +41,6 @@ views:
 
       - type: grid
         title: Water and circulation
-        columns: 2
-        square: false
         cards:
           - type: tile
             entity: sensor.poolside_water_thermistor
@@ -57,19 +62,26 @@ views:
             name: Circulation speed
             icon: mdi:fan
 
-      - type: history-graph
-        title: Water and chemistry — 24 hours
-        hours_to_show: 24
-        entities:
-          - entity: sensor.poolside_water_thermistor
-            name: Water temperature
-          - entity: sensor.poolside_ph
-            name: pH
-          - entity: sensor.poolside_chlorine
-            name: Chlorine
+          - type: history-graph
+            title: Water and chemistry — 24 hours
+            hours_to_show: 24
+            entities:
+              - entity: sensor.poolside_water_thermistor
+                name: Water temperature
+              - entity: sensor.poolside_ph
+                name: pH
+              - entity: sensor.poolside_chlorine
+                name: Chlorine
+            grid_options:
+              columns: full
 
-      - type: calendar
+      - type: grid
         title: Schedules
-        initial_view: listWeek
-        entities:
-          - calendar.poolside_schedule
+        cards:
+          - type: calendar
+            title: Schedules
+            initial_view: listWeek
+            entities:
+              - calendar.poolside_schedule
+            grid_options:
+              columns: full

@@ -5,6 +5,10 @@
  * action exposed here: the confirmed high-level water-flow shutdown for Off.
  */
 class PoolsideBodySelector extends HTMLElement {
+  getGridOptions() {
+    return { columns: 12, min_columns: 6, rows: 2, min_rows: 2 };
+  }
+
   static getConfigElement() {
     return document.createElement("poolside-body-selector");
   }

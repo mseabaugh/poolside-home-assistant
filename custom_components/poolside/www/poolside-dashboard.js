@@ -1,5 +1,9 @@
 /** Daily-use Poolside dashboard with a separate live diagnostics view. */
 class PoolsideDashboard extends HTMLElement {
+  getGridOptions() {
+    return { columns: 12, min_columns: 6, min_rows: 4 };
+  }
+
   setConfig(config) {
     if (!config || typeof config.mode_entity !== "string") {
       throw new Error("poolside-dashboard requires mode_entity");
