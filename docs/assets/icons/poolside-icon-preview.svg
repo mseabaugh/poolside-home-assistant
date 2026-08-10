@@ -7,12 +7,12 @@
   </style>
   <g transform="translate(40 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M10 31h44"/><path d="M14 31V15h12v16M18 21h8M18 27h8"/><path d="M7 39c5-4 10-4 15 0s10 4 15 0 10-4 20 0"/><path d="M7 49c5-4 10-4 15 0s10 4 15 0 10-4 20 0"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="37" rx="26" ry="12"/><path d="M10 37c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 35V19c0-4 6-4 6 0M47 35V19c0-4 6-4 6 0M39 25h8M39 31h8"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Pool</text><text class="hint" x="135" y="226" text-anchor="middle">Body of water</text>
   </g>
   <g transform="translate(345 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M13 30h38l-3 19H16z"/><path d="M17 49v5M47 49v5"/><path d="M11 30c5-4 10-4 15 0s10 4 15 0 8-3 13 0"/><path d="M22 23c-4-4 4-6 0-11M32 23c-4-4 4-6 0-11M42 23c-4-4 4-6 0-11"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="40" rx="26" ry="12"/><path d="M10 40c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 38V22c0-4 6-4 6 0M47 38V22c0-4 6-4 6 0M39 28h8M39 34h8"/><path d="M17 25c-4-4 4-6 0-11M27 23c-4-4 4-6 0-11M37 20c-4-4 4-6 0-11"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Hot tub</text><text class="hint" x="135" y="226" text-anchor="middle">Heated body</text>
   </g>
   <g transform="translate(650 50)">
