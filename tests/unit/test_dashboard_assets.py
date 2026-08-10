@@ -20,6 +20,8 @@ def test_dashboard_assets_support_responsive_full_width_sections() -> None:
     assert "max_columns: 3" in native
     assert "column_span: 3" in native
     assert "columns: full" in native
+    assert "type: climate-hvac-modes" in native
+    assert "type: target-temperature" in native
 
 
 def test_dashboard_discovers_water_telemetry_alongside_configured_sensors() -> None:
@@ -131,8 +133,9 @@ def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -
     assert '"set_temperature"' in dashboard
     assert "temperature-with-air" in dashboard
     assert "\\nAir ${this._stateValue(air)}" in dashboard
-    assert "circulationRunning" in dashboard
-    assert 'stats.push(["mdi:fan", "Circulation", circulationValue])' in dashboard
+    assert "/pump.*rpm/" in dashboard
+    assert 'stats.push(["mdi:pump", label, status])' in dashboard
+    assert 'replace(/\\s+RPM$/i, "")' in dashboard
     assert "Water temperature, air temperature, pH, ORP, and chlorine (normalized)" in dashboard
 
 

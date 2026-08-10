@@ -499,6 +499,8 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
     assert [entity.control_uuid for entity in climate_entities(coordinator)] == ["heat-one"]
     assert [entity.control_uuid for entity in fan_entities(coordinator)] == [blower.uuid]
     await climate.async_set_hvac_mode(HVACMode.OFF)
+    await climate.async_turn_on()
+    await climate.async_turn_off()
     await climate.async_set_temperature(temperature=86)
     with pytest.raises(ValueError, match="Only Off"):
         await climate.async_set_hvac_mode(HVACMode.COOL)
@@ -510,7 +512,9 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
     await fan.async_set_percentage(0)
     with pytest.raises(ValueError, match="between"):
         await fan.async_set_percentage(101)
-    assert coordinator.control_writes[-6:] == [
+    assert coordinator.control_writes[-8:] == [
+        (site.uuid, "heat-one", {"Status": "OFF"}),
+        (site.uuid, "heat-one", {"Status": "ON"}),
         (site.uuid, "heat-one", {"Status": "OFF"}),
         (site.uuid, "heat-one", {"SetPoint": 86}),
         (site.uuid, blower.uuid, {"Status": "ON"}),
@@ -518,6 +522,15 @@ async def test_native_climate_and_fan_preserve_high_level_control_boundary(
         (site.uuid, blower.uuid, {"Status": "OFF"}),
         (site.uuid, blower.uuid, {"Status": "OFF"}),
     ]
+
+    disabled_heater = replace(
+        site.controls["heat-one"], desired={"SetPoint": 90, "DisabledReasons": ["interlock"]}
+    )
+    coordinator.data = PoolsideData(
+        {site.uuid: replace(site, controls={**site.controls, "heat-one": disabled_heater})}
+    )
+    assert [entity.control_uuid for entity in climate_entities(coordinator)] == ["heat-one"]
+    assert PoolsideHeaterClimate(coordinator, site.uuid, "heat-one").available
     malformed = replace(
         site.controls["heat-one"], desired={"Status": "OFF", "SetPoint": "bad", "Restricted": True}
     )

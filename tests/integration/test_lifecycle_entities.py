@@ -115,6 +115,27 @@ async def test_setup_removes_superseded_heater_registry_entities(
     assert _entity_id(hass, "climate", "heat-one_climate")
 
 
+async def test_interlocked_heater_keeps_thermostat_and_saved_setpoint_visible(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_client: Any,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inactive-body interlocks must not remove the body's heater configuration."""
+    desired = fake_transport.responses["Site.getDesiredState"]
+    for row in desired["DesiredStates"]:
+        if row.get("ControlUUID") == "heat-one":
+            row["DisabledReasons"] = ["synthetic-interlock"]
+    await _setup(hass, config_entry, fake_client, monkeypatch)
+
+    entity_id = _entity_id(hass, "climate", "heat-one_climate")
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "heat"
+    assert state.attributes["temperature"] is not None
+
+
 async def test_entity_services_reach_safe_transport_and_reconcile(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

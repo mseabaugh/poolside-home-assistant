@@ -40,14 +40,22 @@ def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideHeaterClimat
     """Build climate entities for confirmed high-level Heating Controls only."""
     for site in coordinator.data.sites.values():
         for control in site.heating_controls.values():
-            if control.available and control.supports_temperature_setpoint:
+            if (
+                not control.restricted
+                and not control.installer_only
+                and control.supports_temperature_setpoint
+            ):
                 yield PoolsideHeaterClimate(coordinator, site.uuid, control.uuid)
 
 
 class PoolsideHeaterClimate(PoolsideEntity, ClimateEntity):
     """A safe Poolside heater represented as one native thermostat control."""
 
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_OFF
+        | ClimateEntityFeature.TURN_ON
+    )
     _attr_min_temp = _MIN_TEMPERATURE
     _attr_max_temp = _MAX_TEMPERATURE
     _attr_target_temperature_step = 1
@@ -69,12 +77,13 @@ class PoolsideHeaterClimate(PoolsideEntity, ClimateEntity):
 
     @property
     def available(self) -> bool:
-        """Withdraw the thermostat if Poolside disables the heater."""
+        """Keep safe saved settings visible while an interlock blocks activation."""
         control = self._control
         return bool(
-            super().available
+            self.coordinator.last_update_success
             and control is not None
-            and control.available
+            and not control.restricted
+            and not control.installer_only
             and control.supports_temperature_setpoint
         )
 
@@ -103,6 +112,14 @@ class PoolsideHeaterClimate(PoolsideEntity, ClimateEntity):
         await self.async_write_control(
             self.control_uuid, {"Status": "ON" if hvac_mode == HVACMode.HEAT else "OFF"}
         )
+
+    async def async_turn_on(self) -> None:
+        """Turn on only the discovered high-level Heating Control."""
+        await self.async_set_hvac_mode(HVACMode.HEAT)
+
+    async def async_turn_off(self) -> None:
+        """Turn off only the discovered high-level Heating Control."""
+        await self.async_set_hvac_mode(HVACMode.OFF)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Write only Poolside's confirmed SetPoint field."""

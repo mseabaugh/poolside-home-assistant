@@ -22,8 +22,15 @@ views:
         title: Spa controls
         cards:
           # Use each entity only when it is discovered for this installation.
-          - type: thermostat
+          - type: tile
             entity: climate.poolside_spa_heater
+            features:
+              - type: climate-hvac-modes
+                hvac_modes:
+                  - "off"
+                  - heat
+              - type: target-temperature
+            vertical: true
           - type: tile
             entity: fan.poolside_spa_blower
             features:
