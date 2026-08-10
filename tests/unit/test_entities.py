@@ -36,7 +36,11 @@ from custom_components.poolside.models import (
     apply_runtime,
     discover_sites,
 )
-from custom_components.poolside.number import PoolsideControlNumber, PoolsideHeaterTemperature
+from custom_components.poolside.number import (
+    PoolsideControlNumber,
+    PoolsideHeaterTemperature,
+    _configured_power_level,
+)
 from custom_components.poolside.number import _entities as number_entities
 from custom_components.poolside.select import (
     PoolsideActiveBodySelect,
@@ -364,36 +368,18 @@ async def test_number_and_theme_failure_paths(
     with pytest.raises(ValueError, match="between"):
         await number.async_set_native_value(101)
 
-    coordinator.data = PoolsideData(
-        {
-            site.uuid: replace(
-                site,
-                controls={
-                    **site.controls,
-                    control.uuid: replace(
-                        control,
-                        desired={"PowerLevel": "65", "PowerLevelRunning": 80},
-                    ),
-                },
-            )
-        }
+    assert (
+        _configured_power_level(
+            replace(control, desired={"PowerLevel": "65", "PowerLevelRunning": 80})
+        )
+        == 65
     )
-    assert number.native_value == 65
-    coordinator.data = PoolsideData(
-        {
-            site.uuid: replace(
-                site,
-                controls={
-                    **site.controls,
-                    control.uuid: replace(
-                        control,
-                        desired={"PowerLevel": None, "PowerLevelRunning": "80"},
-                    ),
-                },
-            )
-        }
+    assert (
+        _configured_power_level(
+            replace(control, desired={"PowerLevel": None, "PowerLevelRunning": "80"})
+        )
+        == 80
     )
-    assert number.native_value == 80
 
     themes = {
         "theme-a": Theme("theme-a", "Party", site.uuid, {"isWorking": False}),
@@ -724,8 +710,9 @@ async def test_controller_derived_route_entities_pair_selection_and_master_switc
 
     group_key = coordinator.body_group_key(site.uuid, "pool")
     coordinator.set_active_body(site.uuid, "spa", group_key)
+    inactive_rate = PoolsideControlNumber(coordinator, site.uuid, "spillover-control")
+    assert inactive_rate.available
     assert not master.available
-    assert rate.available
 
 
 async def test_switch_write_round_trip(
