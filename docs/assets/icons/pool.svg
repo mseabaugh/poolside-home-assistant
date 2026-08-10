@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Pool</title>
+  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 31h44"/>
+    <path d="M14 31V15h12v16M18 21h8M18 27h8"/>
+    <path d="M7 39c5-4 10-4 15 0s10 4 15 0 10-4 20 0"/>
+    <path d="M7 49c5-4 10-4 15 0s10 4 15 0 10-4 20 0"/>
+  </g>
+</svg>

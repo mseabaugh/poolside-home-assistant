@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Hot tub</title>
+  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M13 30h38l-3 19H16z"/>
+    <path d="M17 49v5M47 49v5"/>
+    <path d="M11 30c5-4 10-4 15 0s10 4 15 0 8-3 13 0"/>
+    <path d="M22 23c-4-4 4-6 0-11M32 23c-4-4 4-6 0-11M42 23c-4-4 4-6 0-11"/>
+  </g>
+</svg>
