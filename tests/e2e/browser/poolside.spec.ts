@@ -80,6 +80,27 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   });
   await expect(dashboard.getByText("Water and chemistry — 24 hours", { exact: true })).toBeVisible();
 
+  const filterPercentage = dashboard
+    .locator(".feature")
+    .filter({ hasText: "Filter" })
+    .locator(".feature-number");
+  await expect(filterPercentage).toBeVisible();
+  await filterPercentage.evaluate((slider: any) => {
+    slider.value = 55;
+    slider.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+  });
+  await expect
+    .poll(async () => {
+      const response = await request.get(
+        `${process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080"}/test/state`,
+      );
+      const body = await response.json();
+      return body.desired.DesiredStates.find(
+        (state: { ControlUUID: string }) => state.ControlUUID === "filter-one",
+      ).PowerLevel;
+    })
+    .toBe(55);
+
   const bodySelector = page.locator("poolside-body-selector").last();
   await page.locator("home-assistant").evaluate((app: any) => {
     const hass = app.hass;

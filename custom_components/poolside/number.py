@@ -17,6 +17,21 @@ from .switch import _safe_binary
 _MAX_POWER_LEVEL = 100
 
 
+def _configured_power_level(control: Any) -> float | None:
+    """Return the server-selected percentage without using it as a capability."""
+    for key in ("PowerLevel", "PowerLevelRunning", "PowerLevelIdle"):
+        value = control.desired.get(key)
+        if isinstance(value, bool):
+            continue
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= parsed <= _MAX_POWER_LEVEL:
+            return parsed
+    return None
+
+
 async def async_setup_entry(
     _hass: HomeAssistant,
     entry: PoolsideConfigEntry,
@@ -41,7 +56,8 @@ def _entities(
     for site in coordinator.data.sites.values():
         for control in site.all_controls.values():
             if (
-                control.available
+                not control.restricted
+                and not control.installer_only
                 and _safe_binary(control)
                 and control.supports_percentage
                 and not control.is_blower
@@ -72,19 +88,17 @@ class PoolsideControlNumber(PoolsideEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Return the current desired percentage."""
         control = self.coordinator.site(self.site_uuid).all_controls[self.control_uuid]
-        value = control.desired.get("PowerLevel")
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return float(value)
-        return None
+        return _configured_power_level(control)
 
     @property
     def available(self) -> bool:
-        """Hide a stale percentage entity if Poolside disables its Control."""
+        """Keep passive setpoints available without enabling the Control itself."""
         control = self.coordinator.site(self.site_uuid).all_controls.get(self.control_uuid)
         return bool(
-            super().available
+            self.coordinator.last_update_success
             and control is not None
-            and control.available
+            and not control.restricted
+            and not control.installer_only
             and _safe_binary(control)
             and control.supports_percentage
         )

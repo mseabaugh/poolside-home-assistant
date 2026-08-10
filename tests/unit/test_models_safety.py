@@ -165,6 +165,11 @@ def test_discovery_and_runtime_merge(
     assert site.controls["light-one"].available_effects == ("Blue", "Green", "America")
     assert site.controls["filter-one"].supports_percentage
     assert not site.controls["heat-one"].supports_percentage
+    assert not replace(
+        site.controls["heat-one"],
+        type="Unknown",
+        raw={"PowerLevelIncrements": [0, 100]},
+    ).supports_percentage
 
     merged = apply_runtime(site, states_payload, desired_payload)
     assert merged.equipment["pump-one"].states == {
@@ -310,7 +315,7 @@ def test_route_groups_require_a_complete_controller_derived_feature_path() -> No
         flow_procedure=document,
     )
 
-    assert not replace(spillover, raw={"BodyOfWater": body.uuid}).supports_percentage
+    assert replace(spillover, raw={"BodyOfWater": body.uuid}).supports_percentage
     assert spillover.supports_percentage
     assert spillover.is_water_flow_control
     assert len(site.route_groups) == 1
@@ -522,6 +527,17 @@ def test_safety_policy_authorizes_only_confirmed_targets_and_fields(
         policy.authorize_control(site, "pump-one", {"Status": "ON"})
     with pytest.raises(RestrictedControlError):
         policy.authorize_control(site, "jets-restricted", {"Status": "ON"})
+    disabled = replace(
+        site.controls["filter-one"],
+        desired={"DisabledReasons": ["interlock"], "PowerLevel": 50},
+    )
+    disabled_site = replace(site, controls={**site.controls, "filter-one": disabled})
+    with pytest.raises(RestrictedControlError):
+        policy.authorize_control(disabled_site, "filter-one", {"Status": "ON"})
+    assert (
+        policy.authorize_control(disabled_site, "filter-one", {"PowerLevel": 75}).uuid
+        == "filter-one"
+    )
     installer = replace(site.controls["filter-one"], raw={"Type": "Filter", "InstallerMode": True})
     installer_site = replace(site, controls={**site.controls, "filter-one": installer})
     assert installer.installer_only

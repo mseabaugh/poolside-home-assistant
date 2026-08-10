@@ -130,8 +130,15 @@ class Control:
 
     @property
     def supports_percentage(self) -> bool:
-        """Return whether this Control exposes a safe high-level percentage."""
-        return any(key in self.raw for key in ("PowerLevel", "PowerLevelIncrements", "SpeedRange"))
+        """Return whether discovery identifies a verified variable-power Control.
+
+        Poolside publishes the selected/default percentage in DesiredState.json,
+        but that document must never grant write access.  Capability instead
+        comes from the discovered high-level Control type whose PowerLevel write
+        behavior is verified by the Poolside application protocol.
+        """
+        normalized = self.type.lower().replace(" ", "")
+        return normalized in {"blower", "cleaner", "filter", "waterfeature"}
 
     @property
     def is_water_feature(self) -> bool:

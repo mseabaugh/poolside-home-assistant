@@ -21,6 +21,9 @@ _BASE_CONTROL_FIELDS: Final = frozenset(
     }
 )
 _LIGHT_FIELDS: Final = frozenset({"Brightness", "Color", "LightName", "Speed", "Twinkle"})
+_PASSIVE_SETPOINT_FIELDS: Final = frozenset(
+    {"PowerLevel", "PowerLevelIdle", "PowerLevelRunning", "SetPoint"}
+)
 
 
 class SafetyPolicy:
@@ -33,11 +36,13 @@ class SafetyPolicy:
         control = site.all_controls.get(target_uuid)
         if control is None:
             raise UnsafeWriteError("Write target is not a discovered Control")
-        if control.restricted or control.installer_only or control.disabled_reasons:
+        if control.restricted or control.installer_only:
             raise RestrictedControlError("Control is currently restricted or disabled")
         allowed = _BASE_CONTROL_FIELDS | (_LIGHT_FIELDS if control.is_light else frozenset())
         if not changes or not set(changes).issubset(allowed):
             raise UnsafeWriteError("Control write contains an unconfirmed field")
+        if control.disabled_reasons and not set(changes).issubset(_PASSIVE_SETPOINT_FIELDS):
+            raise RestrictedControlError("Control is currently restricted or disabled")
         return control
 
     def authorize_theme(self, site: Site, theme_uuid: str, status: str) -> Theme:
