@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Waterfall</title>
+  <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 11v24M27 11v24M36 11v24M45 11v24"/>
+    <path d="M8 41c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/>
+    <path d="M8 48c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/>
+    <path d="M8 55c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/>
+  </g>
+</svg>

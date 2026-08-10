@@ -1,23 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 360" role="img" aria-labelledby="title desc">
   <title id="title">Poolside icon set</title>
-  <desc id="desc">Pool, hot tub, and water feature icons shown on Home Assistant style cards.</desc>
-  <rect width="960" height="360" rx="28" fill="#f4f7fa"/>
+  <desc id="desc">Pool, hot tub, fountain, and waterfall icons shown on Home Assistant style cards.</desc>
+  <rect width="1220" height="360" rx="28" fill="#f4f7fa"/>
   <style>
-    .card{fill:#fff;stroke:#d8dee5;stroke-width:2}.icon-bg{fill:#e1f3fb}.icon{fill:none;stroke:#1688bd;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.label{font:600 26px system-ui,sans-serif;fill:#17212b}.hint{font:18px system-ui,sans-serif;fill:#65727e}
+    .card{fill:#fff;stroke:#d8dee5;stroke-width:2}.icon-bg{fill:#e1f3fb}.icon{fill:none;stroke:#1688bd;stroke-width:3.6;stroke-linecap:round;stroke-linejoin:round}.label{font:600 24px system-ui,sans-serif;fill:#17212b}.hint{font:17px system-ui,sans-serif;fill:#65727e}
   </style>
-  <g transform="translate(40 50)">
+  <g transform="translate(30 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
     <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="37" rx="26" ry="12"/><path d="M10 37c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 35V19c0-4 6-4 6 0M47 35V19c0-4 6-4 6 0M39 25h8M39 31h8"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Pool</text><text class="hint" x="135" y="226" text-anchor="middle">Body of water</text>
   </g>
-  <g transform="translate(345 50)">
+  <g transform="translate(325 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
     <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="40" rx="26" ry="12"/><path d="M10 40c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 38V22c0-4 6-4 6 0M47 38V22c0-4 6-4 6 0M39 28h8M39 34h8"/><path d="M17 25c-4-4 4-6 0-11M27 23c-4-4 4-6 0-11M37 20c-4-4 4-6 0-11"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Hot tub</text><text class="hint" x="135" y="226" text-anchor="middle">Heated body</text>
   </g>
-  <g transform="translate(650 50)">
+  <g transform="translate(620 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M32 11v34"/><path d="M32 13c-10 3-16 9-18 18 8 0 14 4 18 11"/><path d="M32 13c10 3 16 9 18 18-8 0-14 4-18 11"/><path d="M14 49c5-4 10-4 15 0s10 4 15 0 8-3 13 0"/><path d="M20 55h24"/></g>
-    <text class="label" x="135" y="195" text-anchor="middle">Water feature</text><text class="hint" x="135" y="226" text-anchor="middle">Fountain or spillover</text>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="45" rx="25" ry="10"/><ellipse cx="32" cy="45" rx="16" ry="5"/><path d="M23 39V22c0-9 18-9 18 0v17"/><path d="M32 17v22"/></g>
+    <text class="label" x="135" y="195" text-anchor="middle">Fountain</text><text class="hint" x="135" y="226" text-anchor="middle">Arcing water feature</text>
+  </g>
+  <g transform="translate(915 50)">
+    <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M18 11v24M27 11v24M36 11v24M45 11v24"/><path d="M8 41c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/><path d="M8 48c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/><path d="M8 55c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/></g>
+    <text class="label" x="135" y="195" text-anchor="middle">Waterfall</text><text class="hint" x="135" y="226" text-anchor="middle">Sheet or cascade</text>
   </g>
 </svg>

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Pool</title>
-  <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+  <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
     <ellipse cx="32" cy="37" rx="26" ry="12"/>
     <path d="M10 37c6-6 38-6 44 0-6 6-38 6-44 0z"/>
     <path d="M39 35V19c0-4 6-4 6 0M47 35V19c0-4 6-4 6 0M39 25h8M39 31h8"/>
