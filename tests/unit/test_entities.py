@@ -380,6 +380,12 @@ async def test_number_and_theme_failure_paths(
         )
         == 80
     )
+    assert (
+        _configured_power_level(
+            replace(control, desired={"PowerLevel": 101, "PowerLevelRunning": 70})
+        )
+        == 70
+    )
 
     themes = {
         "theme-a": Theme("theme-a", "Party", site.uuid, {"isWorking": False}),
