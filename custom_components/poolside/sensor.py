@@ -54,6 +54,13 @@ def _telemetry_is_applicable(device_type: str, state_key: str) -> bool:
     return True
 
 
+def _display_value(state_key: str, value: Any) -> Any:
+    """Round temperature telemetry without changing other protocol values."""
+    if "temperature" in state_key.casefold() and isinstance(value, float):
+        return round(value, 2)
+    return value
+
+
 class PoolsideSensor(PoolsideEntity, SensorEntity):
     """One discovered scalar equipment telemetry value."""
 
@@ -79,7 +86,9 @@ class PoolsideSensor(PoolsideEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return the latest telemetry value."""
         equipment = self.coordinator.site(self.site_uuid).equipment.get(self.equipment_uuid)
-        return None if equipment is None else equipment.states.get(self.state_key)
+        if equipment is None:
+            return None
+        return _display_value(self.state_key, equipment.states.get(self.state_key))
 
     @property
     def available(self) -> bool:

@@ -45,8 +45,12 @@ from custom_components.poolside.select import (
     _theme_options,
 )
 from custom_components.poolside.select import _entities as select_entities
+from custom_components.poolside.sensor import (
+    PoolsideSensor,
+    _display_value,
+    _telemetry_is_applicable,
+)
 from custom_components.poolside.sensor import _entities as sensor_entities
-from custom_components.poolside.sensor import _telemetry_is_applicable
 from custom_components.poolside.switch import PoolsideRouteSwitch, PoolsideSwitch
 from custom_components.poolside.switch import _entities as switch_entities
 
@@ -239,6 +243,34 @@ def test_light_telemetry_filters_non_applicable_runtime_fields(
 
     assert [entity.state_key for entity in binary_entities(coordinator)] == ["Online"]
     assert [entity.state_key for entity in sensor_entities(coordinator)] == ["Brightness"]
+
+
+def test_temperature_sensor_values_are_rounded_for_home_assistant(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """Every HA surface receives temperature telemetry at two-decimal precision."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    site = coordinator.site("site-alpha")
+    thermistor = Equipment(
+        "water-thermistor",
+        "Water thermistor",
+        "Temperature Sensor",
+        site.uuid,
+        {"Temperature": 87.327484},
+    )
+    coordinator.data = PoolsideData(
+        {site.uuid: replace(site, equipment={thermistor.uuid: thermistor})}
+    )
+    entity = PoolsideSensor(coordinator, site.uuid, thermistor.uuid, "Temperature")
+
+    assert entity.native_value == 87.33
+    assert _display_value("Temperature", "unknown") == "unknown"
+    assert _display_value("Pressure", 12.3456) == 12.3456
+
+    coordinator.data = PoolsideData({site.uuid: replace(site, equipment={})})
+    assert entity.native_value is None
 
 
 async def test_calendar_fallback_empty_event_and_api(
