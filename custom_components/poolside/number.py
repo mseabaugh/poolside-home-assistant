@@ -25,7 +25,7 @@ def _configured_power_level(control: Any) -> float | None:
             continue
         try:
             parsed = float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if 0 <= parsed <= _MAX_POWER_LEVEL:
             return parsed
