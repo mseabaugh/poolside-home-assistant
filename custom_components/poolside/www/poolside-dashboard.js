@@ -59,7 +59,9 @@ class PoolsideDashboard extends HTMLElement {
         .metric-list strong { text-align:right; }
         .schedule-time { color:var(--secondary-text-color); font-size:.86rem; margin-top:5px; }
         .feature { border:1px solid var(--divider-color); border-radius:12px; padding:10px; }
-        .feature.active, .heater.active { background:color-mix(in srgb, #ff9800 16%, var(--card-background-color)); border-color:color-mix(in srgb, #ff9800 55%, var(--divider-color)); }
+        .feature.active { background:color-mix(in srgb, #ff9800 16%, var(--card-background-color)); border-color:color-mix(in srgb, #ff9800 55%, var(--divider-color)); }
+        .heater { background:color-mix(in srgb, var(--heater-temp-color, #2196f3) 18%, var(--card-background-color)); border-color:color-mix(in srgb, var(--heater-temp-color, #2196f3) 48%, var(--divider-color)); }
+        .heater.active { background:color-mix(in srgb, var(--heater-temp-color, #2196f3) 30%, var(--card-background-color)); border-color:color-mix(in srgb, var(--heater-temp-color, #2196f3) 72%, var(--divider-color)); }
         .feature-title { display:flex; align-items:center; gap:8px; min-width:0; font-weight:600; }
         .feature-title span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .feature-rate { display:flex; align-items:center; gap:8px; margin-top:10px; }
@@ -254,7 +256,16 @@ class PoolsideDashboard extends HTMLElement {
     const temperatureEntity = climate || setpoint;
     const slider = temperatureEntity ? this._heaterTemperatureInput(temperatureEntity) : "";
     const toggle = heaterSwitch ? this._nativeSwitch(heaterSwitch.entity_id, on, name) : climate ? this._nativeSwitch(climate.entity_id, on, name, `data-climate-next="${on ? "off" : "heat"}"`) : "";
-    return `<div class="panel heater ${on ? "active" : ""}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
+    const temperature = climate ? Number(climate.attributes.target_temperature) : Number(setpoint?.state);
+    const temperatureColor = this._temperatureColor(temperature);
+    return `<div class="panel heater ${on ? "active" : ""}" style="--heater-temp-color:${temperatureColor}"><div class="panel-title"><ha-icon icon="mdi:fire"></ha-icon>${this._escape(name)}</div><div class="row"><span>${on ? "Heating" : "Off"}</span>${toggle}</div>${slider}</div>`;
+  }
+
+  _temperatureColor(value) {
+    const ratio = Math.max(0, Math.min(1, ((Number(value) || 32) - 32) / 72));
+    const start = [33, 150, 243];
+    const end = [244, 67, 54];
+    return `rgb(${start.map((channel, index) => Math.round(channel + (end[index] - channel) * ratio)).join(", ")})`;
   }
 
   _heaterTemperatureInput(state) {

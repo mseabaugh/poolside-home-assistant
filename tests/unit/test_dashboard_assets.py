@@ -132,6 +132,9 @@ def test_dashboard_supports_native_fan_climate_and_combined_temperature_view() -
     assert "heater-temperature-stepper" in dashboard
     assert "const heaterSwitch" in dashboard
     assert "const temperatureEntity = climate || setpoint" in dashboard
+    assert "_temperatureColor(value)" in dashboard
+    assert "((Number(value) || 32) - 32) / 72" in dashboard
+    assert "--heater-temp-color" in dashboard
     assert '"set_temperature"' in dashboard
     assert "temperature-with-air" in dashboard
     assert "\\nAir ${this._stateValue(air)}" in dashboard
