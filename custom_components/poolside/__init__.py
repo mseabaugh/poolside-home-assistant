@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .client import PoolsideClient
-from .const import PLATFORMS
+from .const import PLATFORMS, VERSION
 from .coordinator import PoolsideCoordinator
 from .factory import create_client
 
@@ -60,8 +60,11 @@ def _register_frontend_modules(hass: HomeAssistant) -> None:
             )
         return
 
-    add_extra_js_url(hass, "/poolside/poolside-body-selector.js")
-    add_extra_js_url(hass, "/poolside/poolside-dashboard.js")
+    # Home Assistant's frontend aggressively caches JavaScript modules.  A
+    # release-specific query value both preserves local installation and makes
+    # every integration update load the matching bundled card implementation.
+    add_extra_js_url(hass, f"/poolside/poolside-body-selector.js?v={VERSION}")
+    add_extra_js_url(hass, f"/poolside/poolside-dashboard.js?v={VERSION}")
 
 
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:

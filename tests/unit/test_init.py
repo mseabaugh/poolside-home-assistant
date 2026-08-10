@@ -12,6 +12,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
 
 from custom_components import poolside
+from custom_components.poolside.const import VERSION
 
 pytestmark = pytest.mark.unit
 
@@ -63,8 +64,8 @@ async def test_async_setup_registers_frontend_assets_when_http_is_available(
         )
     ]
     assert captured_urls == [
-        (hass, "/poolside/poolside-body-selector.js"),
-        (hass, "/poolside/poolside-dashboard.js"),
+        (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
     ]
 
 
@@ -84,8 +85,8 @@ async def test_async_setup_skips_static_registration_when_http_is_missing(
     assert await poolside.async_setup(hass, {})
 
     assert captured_urls == [
-        (hass, "/poolside/poolside-body-selector.js"),
-        (hass, "/poolside/poolside-dashboard.js"),
+        (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
     ]
 
 
@@ -109,6 +110,6 @@ async def test_frontend_module_registration_defers_until_frontend_is_ready(
     hass.data[DATA_EXTRA_MODULE_URL] = UrlManager(lambda _change, _url: None, [])
     await dummy_bus.callbacks[0][1](object())
     assert captured_urls == [
-        (hass, "/poolside/poolside-body-selector.js"),
-        (hass, "/poolside/poolside-dashboard.js"),
+        (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
     ]
