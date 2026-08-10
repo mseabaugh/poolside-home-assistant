@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Hot tub</title>
   <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="32" cy="40" rx="26" ry="12"/>
-    <path d="M10 40c6-6 38-6 44 0-6 6-38 6-44 0z"/>
-    <path d="M39 38V22c0-4 6-4 6 0M47 38V22c0-4 6-4 6 0M39 28h8M39 34h8"/>
-    <path d="M17 25c-4-4 4-6 0-11M27 23c-4-4 4-6 0-11M37 20c-4-4 4-6 0-11"/>
+    <ellipse cx="32" cy="42" rx="27" ry="15"/>
+    <ellipse cx="32" cy="42" rx="17" ry="6"/>
+    <path d="M40 37V19c0-4 7-4 7 0M50 37V19c0-4 7-4 7 0M40 26h10M40 33h10"/>
+    <path d="M15 24c-4-4 4-7 0-12M26 22c-4-4 4-7 0-12M37 20c-4-4 4-7 0-12"/>
   </g>
 </svg>

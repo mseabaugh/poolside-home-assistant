@@ -7,22 +7,22 @@
   </style>
   <g transform="translate(30 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="37" rx="26" ry="12"/><path d="M10 37c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 35V19c0-4 6-4 6 0M47 35V19c0-4 6-4 6 0M39 25h8M39 31h8"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="39" rx="27" ry="15"/><ellipse cx="32" cy="39" rx="17" ry="6"/><path d="M40 34V16c0-4 7-4 7 0M50 34V16c0-4 7-4 7 0M40 23h10M40 30h10"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Pool</text><text class="hint" x="135" y="226" text-anchor="middle">Body of water</text>
   </g>
   <g transform="translate(325 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="40" rx="26" ry="12"/><path d="M10 40c6-6 38-6 44 0-6 6-38 6-44 0z"/><path d="M39 38V22c0-4 6-4 6 0M47 38V22c0-4 6-4 6 0M39 28h8M39 34h8"/><path d="M17 25c-4-4 4-6 0-11M27 23c-4-4 4-6 0-11M37 20c-4-4 4-6 0-11"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="42" rx="27" ry="15"/><ellipse cx="32" cy="42" rx="17" ry="6"/><path d="M40 37V19c0-4 7-4 7 0M50 37V19c0-4 7-4 7 0M40 26h10M40 33h10"/><path d="M15 24c-4-4 4-7 0-12M26 22c-4-4 4-7 0-12M37 20c-4-4 4-7 0-12"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Hot tub</text><text class="hint" x="135" y="226" text-anchor="middle">Heated body</text>
   </g>
   <g transform="translate(620 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="45" rx="25" ry="10"/><ellipse cx="32" cy="45" rx="16" ry="5"/><path d="M23 39V22c0-9 18-9 18 0v17"/><path d="M32 17v22"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><ellipse cx="32" cy="46" rx="27" ry="13"/><ellipse cx="32" cy="46" rx="14" ry="4"/><path d="M21 38V21c0-11 22-11 22 0v17"/><path d="M32 17v22"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Fountain</text><text class="hint" x="135" y="226" text-anchor="middle">Arcing water feature</text>
   </g>
   <g transform="translate(915 50)">
     <rect class="card" width="270" height="260" rx="24"/><circle class="icon-bg" cx="135" cy="104" r="62"/>
-    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M18 11v24M27 11v24M36 11v24M45 11v24"/><path d="M8 41c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/><path d="M8 48c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/><path d="M8 55c3-3 6-3 9 0s6 3 9 0 6-3 9 0 6 3 9 0 6-3 12 0"/></g>
+    <g class="icon" transform="translate(93 62) scale(1.32)"><path d="M14 8v27M26 8v27M38 8v27M50 8v27"/><path d="M7 41c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/><path d="M7 50c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/><path d="M7 59c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/></g>
     <text class="label" x="135" y="195" text-anchor="middle">Waterfall</text><text class="hint" x="135" y="226" text-anchor="middle">Sheet or cascade</text>
   </g>
 </svg>
