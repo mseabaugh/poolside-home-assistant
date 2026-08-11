@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
   <title id="title">Waterfall</title>
-  <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 8v27M26 8v27M38 8v27M50 8v27"/>
-    <path d="M7 41c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/>
-    <path d="M7 50c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/>
-    <path d="M7 59c4-3 8-3 12 0s8 3 12 0 8-3 12 0 8 3 14 0"/>
+  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M28 136c0-24 43-44 100-44 18 0 35 2 50 6M28 136c0 26 43 48 100 48 55 0 99-20 100-46"/>
+    <path d="M150 58h70v38M150 58v28M160 84v34M180 84v42M200 84v34"/>
+    <path d="M156 132c18 10 35 10 52 0M72 146c14 7 29 7 44 0"/>
   </g>
 </svg>

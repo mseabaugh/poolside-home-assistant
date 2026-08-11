@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
   <title id="title">Fountain</title>
-  <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="32" cy="46" rx="27" ry="13"/>
-    <ellipse cx="32" cy="46" rx="14" ry="4"/>
-    <path d="M21 38V21c0-11 22-11 22 0v17"/>
-    <path d="M32 17v22"/>
+  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 138c0-25 43-45 98-45s98 20 98 45-43 45-98 45-98-20-98-45z"/>
+    <path d="M116 132h24M122 132V98M134 132V98M105 98h46"/>
+    <path d="M109 98c3 14 13 22 19 22s16-8 19-22M128 98V32"/>
+    <path d="M128 62c-10-14-23-22-35-20M128 62c10-14 23-22 35-20M110 70c-13-9-26-9-36-2M146 70c13-9 26-9 36-2"/>
   </g>
 </svg>
