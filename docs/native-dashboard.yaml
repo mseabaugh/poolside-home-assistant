@@ -15,6 +15,11 @@ views:
           - type: custom:poolside-body-selector
             entity: select.poolside_active_body
             name: Active body
+            # Optional presentation controls. Omit max_width to fill the section.
+            rail_height: 52
+            border_radius: 26
+            card_padding: 12
+            segment_widths: [1, 1.35, 1.35]
             grid_options:
               columns: full
 

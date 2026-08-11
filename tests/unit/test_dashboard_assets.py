@@ -312,6 +312,24 @@ def test_body_selector_shows_confirmed_flow_and_confirms_only_safe_off() -> None
     assert "Switch from ${current}" not in selector
 
 
+def test_body_selector_fills_its_section_and_supports_layout_controls() -> None:
+    """Owners can tune rail geometry and segment proportions without unsafe CSS."""
+    root = Path(__file__).parents[2]
+    selector = (root / "custom_components/poolside/www/poolside-body-selector.js").read_text()
+    native = (root / "docs/native-dashboard.yaml").read_text()
+
+    assert "width:100%; grid-column:1 / -1" in selector
+    assert "--poolside-selector-max-width" in selector
+    assert "this.config.rail_height" in selector
+    assert "this.config.border_radius" in selector
+    assert "this.config.card_padding" in selector
+    assert "this.config?.segment_widths" in selector
+    assert "weights.every" in selector
+    assert "segment_widths: [1, 1.35, 1.35]" in native
+    assert "column_span: 3" in native
+    assert "columns: full" in native
+
+
 def test_dashboard_uses_a_normalized_line_trend_on_the_homeowner_view() -> None:
     """Mixed-unit controller measurements render as a line trend, not state bars."""
     dashboard = (

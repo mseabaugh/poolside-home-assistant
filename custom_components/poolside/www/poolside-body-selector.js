@@ -25,15 +25,21 @@ class PoolsideBodySelector extends HTMLElement {
     const root = this.shadowRoot || this.attachShadow({ mode: "open" });
     root.innerHTML = `
       <style>
-        :host { display:block; }
-        ha-card { padding: 16px; }
+        :host { display:block; width:100%; grid-column:1 / -1; }
+        ha-card {
+          box-sizing:border-box;
+          width:100%;
+          max-width:var(--poolside-selector-max-width, none);
+          margin-inline:auto;
+          padding:var(--poolside-selector-card-padding, 16px);
+        }
         .heading { font-size: 1.05rem; font-weight: 600; }
         .state { opacity: .75; font-size: .82rem; margin-top: 2px; }
         .rail {
           position: relative;
           margin-top: 18px;
-          border-radius: 22px;
-          height: 44px;
+          border-radius: var(--poolside-selector-radius, 22px);
+          height: var(--poolside-selector-height, 44px);
           background: var(--secondary-background-color);
           overflow: hidden;
         }
@@ -45,7 +51,7 @@ class PoolsideBodySelector extends HTMLElement {
           right: auto;
           width: 0%;
           background: var(--primary-color);
-          border-radius: 18px;
+          border-radius: calc(var(--poolside-selector-radius, 22px) - 4px);
           transition: left 0.2s ease, width 0.2s ease;
         }
         .segments {
@@ -122,6 +128,7 @@ class PoolsideBodySelector extends HTMLElement {
     this._thumb = root.querySelector(".thumb");
     this._thumbSymbol = root.querySelector(".thumb-symbol");
     this._confirm = root.querySelector(".confirm");
+    this._applyLayoutConfig();
     this._render();
   }
 
@@ -150,7 +157,8 @@ class PoolsideBodySelector extends HTMLElement {
         : entity.state === "unknown" ? "Waiting for confirmation"
           : confirmedFlow ? `${entity.state} · confirmed flow: ${confirmedFlow}` : entity.state;
     const states = names.length;
-    this._segments.style.gridTemplateColumns = `repeat(${states}, minmax(0, 1fr))`;
+    const weights = this._segmentWeights(states);
+    this._segments.style.gridTemplateColumns = weights.map((weight) => `${weight}fr`).join(" ");
     this._segments.querySelectorAll(".segment").forEach((node) => node.remove());
     this._fill.style.width = "0%";
     this._fill.style.left = "0%";
@@ -158,10 +166,13 @@ class PoolsideBodySelector extends HTMLElement {
     this._thumbSymbol.textContent = this._symbolForOption(entity.state);
 
     const selectedIndex = Math.max(names.indexOf(entity.state), 0);
-    const selectedPercent = (selectedIndex / states) * 100;
-    this._fill.style.width = `${100 / states}%`;
+    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+    const precedingWeight = weights.slice(0, selectedIndex).reduce((total, weight) => total + weight, 0);
+    const selectedPercent = (precedingWeight / totalWeight) * 100;
+    const selectedWidth = (weights[selectedIndex] / totalWeight) * 100;
+    this._fill.style.width = `${selectedWidth}%`;
     this._fill.style.left = `${selectedPercent}%`;
-    this._thumb.style.left = `${selectedPercent + (50 / states)}%`;
+    this._thumb.style.left = `${selectedPercent + (selectedWidth / 2)}%`;
 
     names.forEach((option) => {
       const button = document.createElement("button");
@@ -176,6 +187,28 @@ class PoolsideBodySelector extends HTMLElement {
       if (entity.attributes?.transition_state || entity.state === "unavailable") button.disabled = true;
       this._segments.appendChild(button);
     });
+  }
+
+  _applyLayoutConfig() {
+    const number = (value, fallback, minimum, maximum) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
+    };
+    const padding = number(this.config.card_padding, 16, 0, 48);
+    const height = number(this.config.rail_height, 44, 32, 96);
+    const radius = number(this.config.border_radius, Math.round(height / 2), 0, 48);
+    const maxWidth = number(this.config.max_width, 0, 240, 2400);
+    this.style.setProperty("--poolside-selector-card-padding", `${padding}px`);
+    this.style.setProperty("--poolside-selector-height", `${height}px`);
+    this.style.setProperty("--poolside-selector-radius", `${radius}px`);
+    this.style.setProperty("--poolside-selector-max-width", maxWidth ? `${maxWidth}px` : "none");
+  }
+
+  _segmentWeights(count) {
+    const configured = this.config?.segment_widths;
+    if (!Array.isArray(configured) || configured.length !== count) return Array(count).fill(1);
+    const weights = configured.map(Number);
+    return weights.every((weight) => Number.isFinite(weight) && weight > 0) ? weights : Array(count).fill(1);
   }
 
   _symbolForOption(option) {
