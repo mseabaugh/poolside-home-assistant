@@ -38,6 +38,26 @@ def test_heater_gauge_keeps_mode_control_visible_and_supports_color_ranges() -> 
     assert native.count("color:") == 6  # five heater bands plus water tile
 
 
+def test_poolside_status_badge_uses_explicit_ids_and_native_badge_contract() -> None:
+    """The compact badge registers correctly and never discovers entities by name."""
+    root = Path(__file__).parents[2]
+    badge = (root / "custom_components/poolside/www/poolside-status-badge.js").read_text()
+    native = (root / "docs/native-dashboard.yaml").read_text()
+
+    assert "window.customBadges" in badge
+    assert 'type:"poolside-status-badge"' in badge
+    assert 'new CustomEvent("hass-more-info"' in badge
+    assert 'key.endsWith("_entity")' in badge
+    assert "friendly_name" not in badge
+    assert "toFixed(2)" in badge
+    assert "brightness_percent" in badge
+    assert 'key === "primary_pump_entity"' in badge
+    assert "unknown" in badge
+    assert "unavailable" in badge
+    assert "type: custom:poolside-status-badge" in native
+    assert "details_entity: light.poolside_all_lights" in native
+
+
 def test_dashboard_discovers_water_telemetry_alongside_configured_sensors() -> None:
     """A manual diagnostic list must not hide the authoritative water sensor."""
     dashboard = (

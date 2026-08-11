@@ -25,7 +25,8 @@ from custom_components.poolside.coordinator import PoolsideCoordinator
 from custom_components.poolside.entity import PoolsideEntity, scalar_states, setup_dynamic_entities
 from custom_components.poolside.fan import PoolsideBlowerFan
 from custom_components.poolside.fan import _entities as fan_entities
-from custom_components.poolside.light import PoolsideLight
+from custom_components.poolside.light import PoolsideAllLights, PoolsideLight
+from custom_components.poolside.light import _entities as light_entities
 from custom_components.poolside.models import (
     BodyOfWater,
     Control,
@@ -76,6 +77,7 @@ class StubCoordinator(PoolsideCoordinator):
         self.last_update_success = True
         self.hass = cast("HomeAssistant", SimpleNamespace(config=SimpleNamespace(time_zone="UTC")))
         self.control_writes: list[tuple[str, str, dict[str, object]]] = []
+        self.light_group_writes: list[tuple[str, tuple[str, ...], dict[str, object]]] = []
         self.theme_writes: list[tuple[str, str]] = []
         self._active_bodies: dict[tuple[str, str], str | None] = {}
         self._flow_transitions: dict[tuple[str, str], dict[str, object]] = {}
@@ -93,6 +95,14 @@ class StubCoordinator(PoolsideCoordinator):
 
     async def async_activate_theme(self, site_uuid: str, theme_uuid: str) -> None:
         self.theme_writes.append((site_uuid, theme_uuid))
+
+    async def async_set_light_group(
+        self,
+        site_uuid: str,
+        control_uuids: tuple[str, ...],
+        changes: dict[str, object],
+    ) -> None:
+        self.light_group_writes.append((site_uuid, control_uuids, changes))
 
     async def async_run_flow_switch(
         self, site_uuid: str, group_key: str, body_uuid: str | None
@@ -348,6 +358,34 @@ async def test_light_edge_states_and_effect_validation(
     with pytest.raises(ValueError, match="not available"):
         await light.async_turn_on(effect="Unknown")
     assert coordinator.control_writes[-1][2]["LightName"] == "Blue"
+
+
+async def test_all_lights_is_site_scoped_and_batches_safe_light_controls(
+    user_config: dict[str, Any],
+    states_payload: dict[str, Any],
+    desired_payload: dict[str, Any],
+) -> None:
+    """The aggregate includes only discovered lights and uses one authorized batch."""
+    coordinator = _coordinator(user_config, states_payload, desired_payload)
+    entities = list(light_entities(coordinator))
+    group = next(entity for entity in entities if isinstance(entity, PoolsideAllLights))
+
+    assert group.unique_id == "site-alpha_all_lights"
+    assert group.extra_state_attributes["light_count"] == 2
+    assert group.extra_state_attributes["brightness_percent"] == 100
+    await group.async_turn_on(brightness=128, rgb_color=(12, 34, 56))
+    await group.async_turn_off()
+
+    site_uuid, control_uuids, changes = coordinator.light_group_writes[0]
+    assert site_uuid == "site-alpha"
+    assert control_uuids == ("light-combined", "light-one")
+    assert changes == {
+        "Status": "ON",
+        "Brightness": 50,
+        "Color": '#[{"duration":0,"RGB":"12|34|56","fadeIn":0}]',
+        "LightName": '#[{"duration":0,"RGB":"12|34|56","fadeIn":0}]',
+    }
+    assert coordinator.light_group_writes[1][2] == {"Status": "OFF"}
 
 
 async def test_number_and_theme_failure_paths(

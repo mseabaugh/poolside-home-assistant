@@ -6,6 +6,18 @@ views:
     type: sections
     max_columns: 3
     dense_section_placement: true
+    badges:
+      - type: custom:poolside-status-badge
+        name: Poolside
+        # Use exact entity IDs from this Home Assistant installation.
+        water_entity: sensor.poolside_water_thermistor
+        air_entity: sensor.poolside_air_temperature
+        primary_pump_entity: sensor.poolside_primary_pump_speed_percent
+        feature_pump_entity: sensor.poolside_feature_pump_speed_percent
+        lights_entity: light.poolside_all_lights
+        ph_entity: sensor.poolside_ph
+        orp_entity: sensor.poolside_orp
+        details_entity: light.poolside_all_lights
     sections:
       # The mode rail spans the desktop view. HA collapses sections to a
       # single column automatically on narrow tablet and phone displays.

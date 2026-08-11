@@ -352,6 +352,39 @@ async def test_cross_body_control_activation_requires_confirmed_flow(
     assert client.async_set_control.await_count == 2  # type: ignore[attr-defined]
 
 
+async def test_light_group_batches_only_discovered_lights_and_reconciles(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """Aggregate writes batch real light Controls and reject mixed equipment targets."""
+    site = discover_sites(user_config).sites["site-alpha"]
+    client = BatchClient(PoolsideData({site.uuid: site}))
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+
+    await coordinator.async_set_light_group(
+        site.uuid,
+        ("light-combined", "light-one"),
+        {"Status": "OFF"},
+    )
+    assert client.batches == [
+        {
+            "light-combined": {"Status": "OFF"},
+            "light-one": {"Status": "OFF"},
+        }
+    ]
+    coordinator.async_request_refresh.assert_awaited_once()  # type: ignore[attr-defined]
+
+    with pytest.raises(ValueError, match="non-light"):
+        await coordinator.async_set_light_group(
+            site.uuid,
+            ("light-one", "filter-one"),
+            {"Status": "ON"},
+        )
+
+
 async def test_flow_switch_rejection_and_invalid_group_fail_closed(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

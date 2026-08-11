@@ -90,6 +90,25 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     )
     .toBe(true);
 
+  const statusBadge = page.locator("poolside-status-badge").last();
+  await page.locator("home-assistant").evaluate((app: any) => {
+    const states = Object.entries(app.hass.states) as [string, any][];
+    const byUniqueName = (pattern: RegExp) =>
+      states.find(([, state]) => pattern.test(state.attributes?.friendly_name ?? ""))?.[0];
+    const card = document.createElement("poolside-status-badge") as any;
+    card.setConfig({
+      name: "Poolside",
+      water_entity: byUniqueName(/water.*thermistor/i),
+      air_entity: byUniqueName(/air.*temperature/i),
+      lights_entity: byUniqueName(/all lights/i),
+    });
+    card.hass = app.hass;
+    document.body.append(card);
+  });
+  await expect(statusBadge).toBeVisible({ timeout: 60_000 });
+  await expect(statusBadge.locator(".name")).toHaveText("Poolside");
+  await expect(statusBadge.locator(".metric")).toHaveCount(3);
+
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers
   // its bundled card module in a fresh frontend, not only in an already warm

@@ -74,6 +74,7 @@ def _register_frontend_modules(hass: HomeAssistant) -> None:
     add_extra_js_url(hass, f"/poolside/poolside-body-selector.js?v={VERSION}")
     add_extra_js_url(hass, f"/poolside/poolside-dashboard.js?v={VERSION}")
     add_extra_js_url(hass, f"/poolside/poolside-heater-gauge.js?v={VERSION}")
+    add_extra_js_url(hass, f"/poolside/poolside-status-badge.js?v={VERSION}")
 
 
 async def async_setup(hass: HomeAssistant, _config: dict[str, object]) -> bool:

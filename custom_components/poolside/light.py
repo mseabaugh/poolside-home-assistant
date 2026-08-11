@@ -43,12 +43,123 @@ async def async_setup_entry(
     )
 
 
-def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideLight]:
-    """Build one entity for every ordinary or Combined light Control."""
+def _entities(coordinator: PoolsideCoordinator) -> Iterable[PoolsideLight | PoolsideAllLights]:
+    """Build one aggregate plus every ordinary or Combined light Control."""
     for site in coordinator.data.sites.values():
+        light_uuids = tuple(
+            sorted(
+                control.uuid
+                for control in site.all_controls.values()
+                if control.available and control.is_light
+            )
+        )
+        if light_uuids:
+            yield PoolsideAllLights(coordinator, site.uuid)
         for control in site.all_controls.values():
             if control.available and control.is_light:
                 yield PoolsideLight(coordinator, site.uuid, control.uuid)
+
+
+class PoolsideAllLights(PoolsideEntity, LightEntity):
+    """One native aggregate for all discovered light Controls at a Poolside site."""
+
+    def __init__(self, coordinator: PoolsideCoordinator, site_uuid: str) -> None:
+        """Initialize with a site-scoped stable identifier."""
+        super().__init__(coordinator, site_uuid)
+        self._attr_unique_id = f"{site_uuid}_all_lights"
+        self._attr_name = "All lights"
+        self._attr_icon = "mdi:lightbulb-group"
+        self._attr_supported_color_modes = {ColorMode.RGB}
+
+    @property
+    def _controls(self) -> tuple[Control, ...]:
+        """Return the latest available light Controls in stable order."""
+        return tuple(
+            sorted(
+                (
+                    control
+                    for control in self.coordinator.site(self.site_uuid).all_controls.values()
+                    if control.available and control.is_light
+                ),
+                key=lambda control: control.uuid,
+            )
+        )
+
+    @property
+    def available(self) -> bool:
+        """Require coordinator availability and at least one discovered light."""
+        return bool(super().available and self._controls)
+
+    @property
+    def is_on(self) -> bool:
+        """Report on when any Poolside light is on."""
+        return any(
+            str(control.desired.get("Status", "OFF")).upper() == "ON" for control in self._controls
+        )
+
+    @property
+    def color_mode(self) -> ColorMode:
+        """Expose RGB because every member is an RGB Poolside light."""
+        return ColorMode.RGB
+
+    @property
+    def brightness(self) -> int | None:
+        """Use the brightest valid member, matching Home Assistant group behavior."""
+        values: list[int] = []
+        for control in self._controls:
+            value = control.desired.get("Brightness")
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                continue
+            try:
+                values.append(poolside_brightness_to_ha(value))
+            except ValueError:
+                continue
+        return max(values) if values else None
+
+    @property
+    def rgb_color(self) -> tuple[int, int, int] | None:
+        """Expose a color only when all colored members agree."""
+        colors = {
+            color
+            for control in self._controls
+            if (color := decode_rgb(control.desired.get("Color", control.desired.get("LightName"))))
+            is not None
+        }
+        return next(iter(colors)) if len(colors) == 1 else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Apply one authorized batch to all discovered light Controls."""
+        changes: dict[str, object] = {"Status": "ON"}
+        if ATTR_BRIGHTNESS in kwargs:
+            changes["Brightness"] = ha_brightness_to_poolside(int(kwargs[ATTR_BRIGHTNESS]))
+        if ATTR_RGB_COLOR in kwargs:
+            encoded = encode_rgb(tuple(kwargs[ATTR_RGB_COLOR]))
+            changes.update({"Color": encoded, "LightName": encoded})
+        await self.coordinator.async_set_light_group(
+            self.site_uuid, tuple(control.uuid for control in self._controls), changes
+        )
+
+    async def async_turn_off(self, **_kwargs: Any) -> None:
+        """Turn every discovered Poolside light off in one authorized batch."""
+        await self.coordinator.async_set_light_group(
+            self.site_uuid,
+            tuple(control.uuid for control in self._controls),
+            {"Status": "OFF"},
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose safe aggregate counts and a human-readable brightness percentage."""
+        brightness = self.brightness
+        return {
+            **super().extra_state_attributes,
+            "light_count": len(self._controls),
+            "lights_on": sum(
+                str(control.desired.get("Status", "OFF")).upper() == "ON"
+                for control in self._controls
+            ),
+            "brightness_percent": round(brightness * 100 / 255) if brightness is not None else None,
+        }
 
 
 class PoolsideLight(PoolsideEntity, LightEntity):

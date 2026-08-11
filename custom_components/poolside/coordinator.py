@@ -458,6 +458,26 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         self._pending_controls[(site_uuid, control_uuid)] = dict(changes)
         await self.async_request_refresh()
 
+    async def async_set_light_group(
+        self,
+        site_uuid: str,
+        control_uuids: tuple[str, ...],
+        changes: dict[str, object],
+    ) -> None:
+        """Apply one safe high-level mutation to discovered Poolside lights in one batch."""
+        site = self.site(site_uuid)
+        controls = tuple(site.all_controls.get(control_uuid) for control_uuid in control_uuids)
+        if not controls or any(control is None or not control.is_light for control in controls):
+            raise ValueError("Light group contains an unavailable or non-light Control")
+        changes_by_control = {control_uuid: dict(changes) for control_uuid in control_uuids}
+        result = await self.client.async_set_controls(site, changes_by_control)
+        if result is False:
+            raise PoolsideError("Poolside rejected the light-group update")
+        self._pending_controls.update(
+            {(site_uuid, control_uuid): dict(changes) for control_uuid in control_uuids}
+        )
+        await self.async_request_refresh()
+
     async def async_activate_theme(self, site_uuid: str, theme_uuid: str) -> None:
         """Activate one safe Theme and reconcile confirmation."""
         await self.client.async_activate_theme(self.site(site_uuid), theme_uuid)
