@@ -88,14 +88,14 @@ def test_dashboard_bundles_and_uses_flat_poolside_icons() -> None:
         "spa.png",
         "waterfall.png",
     }
-    assert '_bodyIconPath(value)' in dashboard
-    assert '_waterFeatureIconPath(state)' in dashboard
-    assert '/poolside/icons/spa.png' in dashboard
-    assert '/poolside/icons/pool.png' in dashboard
-    assert '/poolside/icons/bubbler.png' in dashboard
-    assert '/poolside/icons/deck_jet.png' in dashboard
-    assert '/poolside/icons/fountain.png' in dashboard
-    assert '/poolside/icons/waterfall.png' in dashboard
+    assert "_bodyIconPath(value)" in dashboard
+    assert "_waterFeatureIconPath(state)" in dashboard
+    assert "/poolside/icons/spa.png" in dashboard
+    assert "/poolside/icons/pool.png" in dashboard
+    assert "/poolside/icons/bubbler.png" in dashboard
+    assert "/poolside/icons/deck_jet.png" in dashboard
+    assert "/poolside/icons/fountain.png" in dashboard
+    assert "/poolside/icons/waterfall.png" in dashboard
 
 
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
