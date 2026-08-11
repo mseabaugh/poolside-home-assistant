@@ -129,7 +129,7 @@ class PoolsideDashboard extends HTMLElement {
     const mode = modeEntity ? this._hass.states[modeEntity] : undefined;
     if (!mode) return this._renderUnavailable();
 
-    const discovered = this._discoverEntities();
+    const discovered = this._discoverEntities(mode);
     const configured = (key, fallback, allowed) => {
       const ids = Array.isArray(this.config[key]) ? this.config[key].filter((id) => this._hass.states[id] && allowed(id)) : [];
       return ids.length ? ids : fallback;
@@ -475,21 +475,26 @@ class PoolsideDashboard extends HTMLElement {
     return groups;
   }
 
-  _discoverEntities() {
+  _discoverEntities(mode) {
     const result = { pool: [], spa: [], telemetry: [] };
+    const bodyIds = Object.entries(mode.attributes?.poolside_body_ids || {});
+    const bodyId = (label) => bodyIds.find(([option]) => option.toLowerCase() === label)?.[1];
+    const poolBodyId = bodyId("pool");
+    const spaBodyId = bodyId("spa");
     Object.entries(this._hass.states).forEach(([id, state]) => {
       const name = String(state.attributes.friendly_name || "").toLowerCase();
       const identity = `${name} ${id.toLowerCase()}`;
       const domain = id.split(".")[0];
-      const poolside = id.includes("poolside") || /^(pool|spa)\b/.test(name);
+      const scope = state.attributes?.poolside_body_id;
+      const poolside = Boolean(scope) || id.includes("poolside") || /^(pool|spa)\b/.test(name);
       if (!poolside) return;
       if (["switch", "light", "number", "fan", "climate"].includes(domain)) {
-        if (identity.includes("pool")) result.pool.push(id);
-        else if (identity.includes("spa")) result.spa.push(id);
+        if (scope && scope === poolBodyId) result.pool.push(id);
+        else if (scope && scope === spaBodyId) result.spa.push(id);
       }
       if (domain === "select" && state.attributes?.controller_derived) {
-        if (identity.includes("pool")) result.pool.push(id);
-        else if (identity.includes("spa")) result.spa.push(id);
+        if (scope && scope === poolBodyId) result.pool.push(id);
+        else if (scope && scope === spaBodyId) result.spa.push(id);
       }
       if (["sensor", "binary_sensor"].includes(domain) && /(rpm|speed|flow|pressure|temperature|thermometer|ph|chlorine|orp|firmware|version|fault|online)/.test(identity)) result.telemetry.push(id);
     });

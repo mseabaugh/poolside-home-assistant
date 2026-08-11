@@ -97,8 +97,9 @@ class PoolsideSwitch(PoolsideEntity, SwitchEntity):
         """Mark route members without exposing Poolside identifiers to HA state."""
         route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
         if route is None:
-            return {}
+            return super().extra_state_attributes
         return {
+            **super().extra_state_attributes,
             "poolside_route_group": fingerprint(route.key)[:12],
             "poolside_route_member": True,
         }
@@ -164,6 +165,7 @@ class PoolsideRouteSwitch(PoolsideEntity, SwitchEntity):
     def extra_state_attributes(self) -> dict[str, object]:
         """Expose safe cardinality rather than controller IDs or equipment rows."""
         return {
+            **super().extra_state_attributes,
             "poolside_route_group": fingerprint(self.route_group.key)[:12],
             "poolside_control_kind": "route_group",
             "route_count": len(self.route_group.control_uuids),

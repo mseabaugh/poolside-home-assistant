@@ -115,6 +115,27 @@ def test_dashboard_resolves_body_selector_from_protocol_attributes() -> None:
     assert 'id.includes("active_body")' not in resolver
 
 
+def test_dashboard_classifies_controls_by_body_ids_only() -> None:
+    """Ambiguous control names cannot move an entity to the wrong body."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    discovery = dashboard.split("_discoverEntities(mode) {", 1)[1].split(
+        "\n  _discoverHomeData()", 1
+    )[0]
+    assert "poolside_body_ids" in discovery
+    assert "poolside_body_id" in discovery
+    assert "scope === poolBodyId" in discovery
+    assert "scope === spaBodyId" in discovery
+    assert 'identity.includes("pool")' not in discovery
+    assert 'identity.includes("spa")' not in discovery
+
+
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     """The homeowner view must avoid empty sections and raw controller precision."""
     dashboard = (

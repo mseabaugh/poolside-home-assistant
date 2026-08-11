@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import PoolsideCoordinator
+from .redact import fingerprint
 
 if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -39,6 +40,13 @@ class PoolsideEntity(CoordinatorEntity[PoolsideCoordinator]):
         if not super().available:
             return False
         return self.coordinator.body_is_visible(self.site_uuid, self.body_uuid)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose a stable non-reversible body scope for UI dependencies."""
+        if self.body_uuid is None:
+            return {}
+        return {"poolside_body_id": fingerprint(self.body_uuid)[:12]}
 
     @property
     def device_info(self) -> DeviceInfo:

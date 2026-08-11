@@ -108,8 +108,9 @@ class PoolsideControlNumber(PoolsideEntity, NumberEntity):
         """Associate route member percentages without leaking controller IDs."""
         route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
         if route is None:
-            return {}
+            return super().extra_state_attributes
         return {
+            **super().extra_state_attributes,
             "poolside_route_group": fingerprint(route.key)[:12],
             "poolside_route_member": True,
         }

@@ -22,7 +22,7 @@ from custom_components.poolside.calendar import _entities as calendar_entities
 from custom_components.poolside.climate import PoolsideHeaterClimate
 from custom_components.poolside.climate import _entities as climate_entities
 from custom_components.poolside.coordinator import PoolsideCoordinator
-from custom_components.poolside.entity import scalar_states, setup_dynamic_entities
+from custom_components.poolside.entity import PoolsideEntity, scalar_states, setup_dynamic_entities
 from custom_components.poolside.fan import PoolsideBlowerFan
 from custom_components.poolside.fan import _entities as fan_entities
 from custom_components.poolside.light import PoolsideLight
@@ -59,6 +59,13 @@ from custom_components.poolside.switch import PoolsideRouteSwitch, PoolsideSwitc
 from custom_components.poolside.switch import _entities as switch_entities
 
 pytestmark = pytest.mark.unit
+
+
+def test_base_entity_omits_body_scope_when_not_body_owned() -> None:
+    """Site-level entities do not publish a fabricated body relationship."""
+    site = Site(uuid="site", name="Site")
+    entity = PoolsideEntity(StubCoordinator(site), site.uuid)
+    assert entity.extra_state_attributes == {}
 
 
 class StubCoordinator(PoolsideCoordinator):
@@ -600,6 +607,12 @@ async def test_active_body_scope_exposes_options_and_filters_controls(  # noqa: 
     assert selector.current_option == "Off"
     assert selector.device_info["model"] == "Body Group"
     assert selector.extra_state_attributes["flow_procedure_available"] is False
+    body_ids = selector.extra_state_attributes["poolside_body_ids"]
+    assert isinstance(body_ids, dict)
+    assert body_ids["Off"] is None
+    assert len(body_ids["Pool"]) == 12
+    assert len(body_ids["Spa"]) == 12
+    assert body_ids["Pool"] != body_ids["Spa"]
     assert selector.extra_state_attributes["flow_procedure_reason"] == (
         "Poolside has not reported flow-procedure metadata"
     )
@@ -709,6 +722,9 @@ async def test_controller_derived_route_entities_pair_selection_and_master_switc
     assert selector.options == ["Bubbler", "Feature Spillover", "Blend"]
     assert selector.current_option == "Feature Spillover"
     assert selector.extra_state_attributes["route_count"] == 2
+    selector_body_id = selector.extra_state_attributes["poolside_body_id"]
+    assert isinstance(selector_body_id, str)
+    assert len(selector_body_id) == 12
     assert isinstance(selector.extra_state_attributes["poolside_route_group"], str)
     assert len(str(selector.extra_state_attributes["poolside_route_group"])) == 12
     await selector.async_select_option("Bubbler")
@@ -722,6 +738,10 @@ async def test_controller_derived_route_entities_pair_selection_and_master_switc
     assert not master.is_on
     assert master.available
     assert master.extra_state_attributes["poolside_control_kind"] == "route_group"
+    assert (
+        master.extra_state_attributes["poolside_body_id"]
+        == selector.extra_state_attributes["poolside_body_id"]
+    )
     await master.async_turn_on()
     await master.async_turn_off()
     await member.async_turn_on()
@@ -733,6 +753,10 @@ async def test_controller_derived_route_entities_pair_selection_and_master_switc
     ]
     assert member.extra_state_attributes["poolside_route_member"] is True
     assert rate.extra_state_attributes["poolside_route_member"] is True
+    assert (
+        member.extra_state_attributes["poolside_body_id"]
+        == rate.extra_state_attributes["poolside_body_id"]
+    )
     assert rate.native_value == 60
     assert any(isinstance(entity, PoolsideRouteSelect) for entity in select_entities(coordinator))
     assert any(isinstance(entity, PoolsideRouteSwitch) for entity in switch_entities(coordinator))

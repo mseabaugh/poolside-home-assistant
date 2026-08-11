@@ -131,7 +131,8 @@ class PoolsideLight(PoolsideEntity, LightEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Expose only non-sensitive high-level inconsistency state."""
         return {
+            **super().extra_state_attributes,
             "inconsistent_combined_control": bool(
                 self._control.desired.get("InconsistentCombinedControl", False)
-            )
+            ),
         }

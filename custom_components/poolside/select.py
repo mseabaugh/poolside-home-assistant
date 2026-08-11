@@ -153,6 +153,10 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
         if transition is None:
             return {
                 "confirmed_water_flow": confirmed_option,
+                "poolside_body_ids": {
+                    label: fingerprint(body_uuid)[:12] if body_uuid else None
+                    for label, body_uuid in self._options_map.items()
+                },
                 "flow_procedure_available": self.coordinator.site(
                     self.site_uuid
                 ).flow_procedure_complete,
@@ -162,6 +166,10 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
             }
         return {
             "confirmed_water_flow": confirmed_option,
+            "poolside_body_ids": {
+                label: fingerprint(body_uuid)[:12] if body_uuid else None
+                for label, body_uuid in self._options_map.items()
+            },
             "flow_procedure_available": True,
             "transition_state": transition["state"],
             **transition,
@@ -237,6 +245,7 @@ class PoolsideRouteSelect(PoolsideEntity, SelectEntity):
     def extra_state_attributes(self) -> dict[str, object]:
         """Expose safe, display-only topology facts without remote identifiers."""
         return {
+            **super().extra_state_attributes,
             "route_count": len(self.route_group.control_uuids),
             "controller_derived": True,
             "supports_blend": True,
