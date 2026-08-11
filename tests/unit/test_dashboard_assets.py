@@ -111,6 +111,8 @@ def test_dashboard_resolves_body_selector_from_protocol_attributes() -> None:
     resolver = dashboard.split("_resolveModeEntity() {", 1)[1].split("\n  }", 1)[0]
     assert "this.config.mode_entity" in resolver
     assert '"confirmed_water_flow"' in resolver
+    assert '"poolside_body_ids"' in resolver
+    assert "configured && isBodySelector" in resolver
     assert 'options.includes("Off")' in resolver
     assert 'id.includes("active_body")' not in resolver
 
@@ -134,6 +136,20 @@ def test_dashboard_classifies_controls_by_body_ids_only() -> None:
     assert "scope === spaBodyId" in discovery
     assert 'identity.includes("pool")' not in discovery
     assert 'identity.includes("spa")' not in discovery
+
+
+def test_dashboard_classifies_poolside_heat_controls_as_heating() -> None:
+    """Poolside's `Heat` label must render in the native heater panel."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    groups = dashboard.split("_groups(ids) {", 1)[1].split("\n  _discoverEntities(mode)", 1)[0]
+    assert r"\bheat(?:er|ing)?\b" in groups
 
 
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:

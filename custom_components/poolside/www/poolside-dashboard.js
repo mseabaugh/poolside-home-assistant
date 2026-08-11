@@ -467,7 +467,7 @@ class PoolsideDashboard extends HTMLElement {
     ids.forEach((id) => {
       const identity = this._identity(this._hass.states[id]);
       if (id.startsWith("light.")) groups.lights.push(id);
-      else if (/heater|temperature|setpoint/.test(identity)) groups.heating.push(id);
+      else if (/\bheat(?:er|ing)?\b|temperature|setpoint/.test(identity)) groups.heating.push(id);
       else if (/filter|pump|circulation/.test(identity)) groups.circulation.push(id);
       else if (/bubbler|blower|cleaner|spill|jets/.test(identity)) groups.features.push(id);
       else groups.other.push(id);
@@ -545,14 +545,19 @@ class PoolsideDashboard extends HTMLElement {
   }
 
   _resolveModeEntity() {
-    if (this._hass.states[this.config.mode_entity]) return this.config.mode_entity;
-    return Object.entries(this._hass.states).find(([id, state]) => {
+    const isBodySelector = (id, state) => {
       const options = state?.attributes?.options;
       return id.startsWith("select.")
         && Object.hasOwn(state.attributes || {}, "confirmed_water_flow")
+        && Object.hasOwn(state.attributes || {}, "poolside_body_ids")
         && Array.isArray(options)
         && options.includes("Off")
         && options.length > 1;
+    };
+    const configured = this._hass.states[this.config.mode_entity];
+    if (configured && isBodySelector(this.config.mode_entity, configured)) return this.config.mode_entity;
+    return Object.entries(this._hass.states).find(([id, state]) => {
+      return isBodySelector(id, state);
     })?.[0];
   }
 
