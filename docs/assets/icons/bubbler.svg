@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
-  <title id="title">Bubbler</title>
-  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M36 126c0-27 41-48 92-48s92 21 92 48-41 48-92 48-92-21-92-48z"/>
-    <path d="M94 130c0-18 15-34 34-34s34 16 34 34M92 130h72"/>
-    <circle cx="128" cy="78" r="4"/><circle cx="112" cy="64" r="4"/><circle cx="145" cy="58" r="4"/>
-    <circle cx="97" cy="82" r="4"/><circle cx="158" cy="80" r="4"/><circle cx="128" cy="48" r="4"/>
-  </g>
-</svg>

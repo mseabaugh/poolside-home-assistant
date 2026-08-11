@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
-  <title id="title">Deck jet</title>
-  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M28 142c0-24 43-44 100-44s100 20 100 44-43 44-100 44-100-20-100-44z"/>
-    <path d="M42 120h18M54 120v18M54 120c18-44 55-66 91-54 28 10 44 38 56 68"/>
-    <path d="M196 138c6 0 12 4 12 10M184 150c12 7 24 7 36 0"/>
-  </g>
-</svg>

@@ -72,6 +72,32 @@ def test_dashboard_provides_a_safe_all_lights_group_control() -> None:
     assert 'callService("light", allOn ? "turn_off" : "turn_on"' in dashboard
 
 
+def test_dashboard_bundles_and_uses_flat_poolside_icons() -> None:
+    """Body and feature controls use only the current bundled flat icon set."""
+    root = Path(__file__).parents[2]
+    dashboard = (root / "custom_components/poolside/www/poolside-dashboard.js").read_text(
+        encoding="utf-8"
+    )
+    icons = root / "custom_components" / "poolside" / "www" / "icons"
+
+    assert {path.name for path in icons.iterdir()} == {
+        "bubbler.png",
+        "deck_jet.png",
+        "fountain.png",
+        "pool.png",
+        "spa.png",
+        "waterfall.png",
+    }
+    assert '_bodyIconPath(value)' in dashboard
+    assert '_waterFeatureIconPath(state)' in dashboard
+    assert '/poolside/icons/spa.png' in dashboard
+    assert '/poolside/icons/pool.png' in dashboard
+    assert '/poolside/icons/bubbler.png' in dashboard
+    assert '/poolside/icons/deck_jet.png' in dashboard
+    assert '/poolside/icons/fountain.png' in dashboard
+    assert '/poolside/icons/waterfall.png' in dashboard
+
+
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     """The homeowner view must avoid empty sections and raw controller precision."""
     dashboard = (

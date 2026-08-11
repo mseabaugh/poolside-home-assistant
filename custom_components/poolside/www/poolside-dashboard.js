@@ -18,6 +18,8 @@ class PoolsideDashboard extends HTMLElement {
         h2 { font-size:1.2rem; }
         h3 { font-size:1rem; }
         ha-icon { color:var(--state-icon-color); }
+        .poolside-icon { width:24px; height:24px; flex:0 0 24px; object-fit:contain; }
+        .mode .poolside-icon { width:22px; height:22px; margin-right:7px; vertical-align:middle; }
         .header { display:flex; align-items:center; gap:10px; }
         .subtitle, .hint { margin:5px 0 0; color:var(--secondary-text-color); font-size:.86rem; }
         .mode-rail { display:flex; gap:4px; margin:18px 0; padding:4px; background:var(--secondary-background-color); border-radius:26px; }
@@ -106,7 +108,7 @@ class PoolsideDashboard extends HTMLElement {
         @media (max-width:560px) { ha-card { padding:14px; } .overview { grid-template-columns:repeat(2,1fr); } .actions { gap:5px; } .slider { width:80px; } .effect { display:none; } }
       </style>
       <ha-card>
-        <div class="header"><ha-icon icon="mdi:pool"></ha-icon><h2></h2></div>
+        <div class="header"><img class="poolside-icon" src="/poolside/icons/pool.png" alt=""><h2></h2></div>
         <p class="subtitle">Safe controls follow the confirmed Poolside cloud state.</p>
         <div class="mode-rail"></div>
         <div class="overview"></div>
@@ -173,7 +175,8 @@ class PoolsideDashboard extends HTMLElement {
     (Array.isArray(mode.attributes.options) ? mode.attributes.options : ["Off"]).forEach((option) => {
       const button = document.createElement("button");
       button.className = `mode ${option === mode.state ? "active" : ""}`;
-      button.textContent = option;
+      const icon = this._bodyIconPath(option);
+      button.innerHTML = `${icon ? `<img class="poolside-icon" src="${icon}" alt="">` : ""}${this._escape(option)}`;
       button.addEventListener("click", () => this._select(option, mode.state, modeEntity));
       rail.appendChild(button);
     });
@@ -222,7 +225,7 @@ class PoolsideDashboard extends HTMLElement {
     const heater = this._heaterCard(groups.heating);
     if (heater) panels.push(heater);
     const features = this._featureCards([...groups.circulation, ...groups.features, ...groups.other]);
-    if (features) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:water-outline"></ha-icon>Water features</div><div class="features">${features}</div></div>`);
+    if (features) panels.push(`<div class="panel"><div class="panel-title"><img class="poolside-icon" src="/poolside/icons/fountain.png" alt="">Water features</div><div class="features">${features}</div></div>`);
     if (schedules.length) panels.push(`<div class="panel"><div class="panel-title"><ha-icon icon="mdi:calendar-clock"></ha-icon>Schedules</div>${schedules.map((schedule) => `<div class="row"><div><strong>${this._escape(schedule.title)}</strong><div class="schedule-time">${this._escape(schedule.time)}</div></div></div>`).join("")}<p class="hint">Schedules are shown from Poolside. Editing remains in the Poolside app until its conflict-safe schedule write procedure is verified.</p></div>`);
     const resting = String(mode.state).toLowerCase() === "off" ? "Choose Pool or Spa to change the dashboard view. Off asks Poolside to turn off only active water-flow Controls in this connected group; lights and saved settings remain unchanged." : `No Poolside equipment is currently running in ${mode.state}.`;
     target.innerHTML = panels.length ? `<div class="home-grid">${panels.join("")}</div>` : `<div class="empty"><strong>Everything is resting.</strong><br><span class="hint">${this._escape(resting)}</span></div>`;
@@ -303,7 +306,8 @@ class PoolsideDashboard extends HTMLElement {
       const on = toggle?.entity_id.startsWith("fan.") ? toggle.state === "on" : toggle?.state === "on";
       const action = toggle ? this._nativeSwitch(toggle.entity_id, on, label) : "";
       const rateControl = fan ? this._fanInput(fan) : rate ? this._numberInput(rate, "feature-number") : "";
-      return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="${this._iconFor(toggle || rate || fan, (toggle || rate || fan).entity_id)}"></ha-icon><span>${this._escape(label)}</span></div>${action}</div>${rateControl ? `<div class="feature-rate">${rateControl}</div>` : ""}</div>`;
+      const representative = toggle || rate || fan;
+      return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title">${this._controlIconMarkup(representative, representative.entity_id)}<span>${this._escape(label)}</span></div>${action}</div>${rateControl ? `<div class="feature-rate">${rateControl}</div>` : ""}</div>`;
     });
     return [...routeCards, ...controlCards].join("");
   }
@@ -319,7 +323,7 @@ class PoolsideDashboard extends HTMLElement {
     const choices = Array.isArray(selection.attributes.options) ? selection.attributes.options : [];
     const options = choices.map((option) => `<option value="${this._escape(option)}" ${option === selected ? "selected" : ""}>${this._escape(option)}</option>`).join("");
     const label = this._controlLabel(master).replace(/ routes?$/i, "");
-    return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title"><ha-icon icon="mdi:water-sync"></ha-icon><span>${this._escape(label)}</span></div>${this._nativeSwitch(master.entity_id, on, label)}</div><div class="row"><span class="hint">Route</span><select class="route-select" data-entity="${this._escape(selection.entity_id)}" aria-label="${this._escape(label)} route">${options}</select></div>${rates.map((state) => `<div class="feature-rate"><span class="hint">${this._escape(this._controlLabel(state).replace(/ power level$/i, ""))}</span>${this._numberInput(state, "feature-number")}</div>`).join("")}</div>`;
+    return `<div class="feature ${on ? "active" : ""}"><div class="row"><div class="feature-title">${this._controlIconMarkup(master, master.entity_id)}<span>${this._escape(label)}</span></div>${this._nativeSwitch(master.entity_id, on, label)}</div><div class="row"><span class="hint">Route</span><select class="route-select" data-entity="${this._escape(selection.entity_id)}" aria-label="${this._escape(label)} route">${options}</select></div>${rates.map((state) => `<div class="feature-rate"><span class="hint">${this._escape(this._controlLabel(state).replace(/ power level$/i, ""))}</span>${this._numberInput(state, "feature-number")}</div>`).join("")}</div>`;
   }
 
   _numberInput(state, className) {
@@ -605,6 +609,26 @@ class PoolsideDashboard extends HTMLElement {
     if (identity.includes("bubbler") || identity.includes("spill") || identity.includes("jets")) return "mdi:water";
     if (id.startsWith("light.")) return "mdi:lightbulb";
     return id.startsWith("number.") ? "mdi:tune-vertical" : "mdi:toggle-switch-outline";
+  }
+  _bodyIconPath(value) {
+    const identity = String(value || "").toLowerCase();
+    if (/spa|hot.?tub/.test(identity)) return "/poolside/icons/spa.png";
+    if (/pool/.test(identity)) return "/poolside/icons/pool.png";
+    return "";
+  }
+  _waterFeatureIconPath(state) {
+    const identity = this._identity(state);
+    if (/bubbler/.test(identity)) return "/poolside/icons/bubbler.png";
+    if (/waterfall|spill/.test(identity)) return "/poolside/icons/waterfall.png";
+    if (/deck.?jet|stream.?fountain|\bjets?\b/.test(identity)) return "/poolside/icons/deck_jet.png";
+    if (/fountain|feature/.test(identity)) return "/poolside/icons/fountain.png";
+    return "";
+  }
+  _controlIconMarkup(state, id) {
+    const custom = this._waterFeatureIconPath(state);
+    return custom
+      ? `<img class="poolside-icon" src="${custom}" alt="">`
+      : `<ha-icon icon="${this._iconFor(state, id)}"></ha-icon>`;
   }
   _temperatureStates() {
     return Object.values(this._hass.states).filter((state) => state && !this._unavailable(state) && /water.*(thermistor|temperature)|temperature.*water/.test(this._identity(state)) && this._isNumericState(state));
