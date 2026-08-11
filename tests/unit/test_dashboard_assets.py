@@ -31,6 +31,13 @@ def test_heater_gauge_keeps_mode_control_visible_and_supports_color_ranges() -> 
     native = (root / "docs/native-dashboard.yaml").read_text()
 
     assert "class PoolsideHeaterGauge" in gauge
+    assert 'document.createElement("poolside-heater-gauge-editor")' in gauge
+    assert 'customElements.define("poolside-heater-gauge-editor"' in gauge
+    assert 'data-key="entity"' in gauge
+    assert "Select a Poolside heater entity" in gauge
+    assert "Entity not found:" in gauge
+    assert 'new CustomEvent("config-changed"' in gauge
+    assert "climate.poolside_pool_heater" not in gauge
     assert 'class="toggle"' in gauge
     assert 'callService("climate", "set_hvac_mode"' in gauge
     assert 'callService("climate", "set_temperature"' in gauge

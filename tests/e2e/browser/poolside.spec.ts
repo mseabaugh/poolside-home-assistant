@@ -135,6 +135,15 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   await expect(badgeEditor).toBeVisible();
   await expect(badgeEditor.locator('ha-entity-picker[data-key="lights_entity"]')).toBeVisible();
 
+  const gaugeEditor = page.locator("poolside-heater-gauge-editor").last();
+  await page.locator("home-assistant").evaluate((app: any) => {
+    const editor = document.createElement("poolside-heater-gauge-editor") as any;
+    editor.setConfig({ type: "custom:poolside-heater-gauge", entity: "" });
+    editor.hass = app.hass;
+    document.body.append(editor);
+  });
+  await expect(gaugeEditor.locator('ha-entity-picker[data-key="entity"]')).toBeVisible();
+
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers
   // its bundled card module in a fresh frontend, not only in an already warm
