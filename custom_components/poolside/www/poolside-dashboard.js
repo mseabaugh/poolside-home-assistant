@@ -541,7 +541,14 @@ class PoolsideDashboard extends HTMLElement {
 
   _resolveModeEntity() {
     if (this._hass.states[this.config.mode_entity]) return this.config.mode_entity;
-    return Object.keys(this._hass.states).find((id) => id.startsWith("select.") && id.includes("active_body"));
+    return Object.entries(this._hass.states).find(([id, state]) => {
+      const options = state?.attributes?.options;
+      return id.startsWith("select.")
+        && Object.hasOwn(state.attributes || {}, "confirmed_water_flow")
+        && Array.isArray(options)
+        && options.includes("Off")
+        && options.length > 1;
+    })?.[0];
   }
 
   _lightIds(value) { return String(value || "").split(",").filter((id) => id.startsWith("light.") && this._hass.states[id]); }

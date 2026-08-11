@@ -98,6 +98,23 @@ def test_dashboard_bundles_and_uses_flat_poolside_icons() -> None:
     assert "/poolside/icons/waterfall.png" in dashboard
 
 
+def test_dashboard_resolves_body_selector_from_protocol_attributes() -> None:
+    """A stale configured entity ID falls back without matching entity names."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    resolver = dashboard.split("_resolveModeEntity() {", 1)[1].split("\n  }", 1)[0]
+    assert "this.config.mode_entity" in resolver
+    assert '"confirmed_water_flow"' in resolver
+    assert 'options.includes("Off")' in resolver
+    assert 'id.includes("active_body")' not in resolver
+
+
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     """The homeowner view must avoid empty sections and raw controller precision."""
     dashboard = (
