@@ -65,6 +65,30 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     timeout: 60_000,
   });
   await page.getByRole("button", { name: /skip and finish|finish/i }).click();
+  await expect
+    .poll(
+      () =>
+        page.locator("home-assistant").evaluate((app: any) => {
+          const states = Object.entries(app.hass?.states ?? {}) as [string, any][];
+          const modeReady = states.some(
+            ([id, state]) =>
+              id.startsWith("select.") &&
+              Array.isArray(state.attributes?.options) &&
+              state.attributes.options.includes("Pool") &&
+              state.attributes.options.includes("Spa"),
+          );
+          const filterRateReady = states.some(
+            ([id, state]) =>
+              id.startsWith("number.") &&
+              /filter.*power level/i.test(
+                `${state.attributes?.friendly_name ?? ""} ${state.attributes?.poolside_name ?? ""}`,
+              ),
+          );
+          return modeReady && filterRateReady;
+        }),
+      { timeout: 60_000, message: "Poolside entities should finish platform setup" },
+    )
+    .toBe(true);
 
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers
