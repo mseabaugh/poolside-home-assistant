@@ -22,15 +22,17 @@ views:
         title: Spa controls
         cards:
           # Use each entity only when it is discovered for this installation.
-          - type: tile
+          - type: custom:poolside-heater-gauge
             entity: climate.poolside_spa_heater
-            features:
-              - type: climate-hvac-modes
-                hvac_modes:
-                  - "off"
-                  - heat
-              - type: target-temperature
-            vertical: true
+            name: Spa heater
+            min: 32
+            max: 104
+            ranges:
+              - { min: 32, max: 59, color: "#2196f3" }
+              - { min: 59, max: 75, color: "#26c6da" }
+              - { min: 75, max: 90, color: "#ffb74d" }
+              - { min: 90, max: 100, color: "#ff7043" }
+              - { min: 100, max: 104, color: "#e53935" }
           - type: tile
             entity: fan.poolside_spa_blower
             features:

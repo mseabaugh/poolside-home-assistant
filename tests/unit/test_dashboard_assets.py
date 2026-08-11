@@ -20,8 +20,22 @@ def test_dashboard_assets_support_responsive_full_width_sections() -> None:
     assert "max_columns: 3" in native
     assert "column_span: 3" in native
     assert "columns: full" in native
-    assert "type: climate-hvac-modes" in native
-    assert "type: target-temperature" in native
+    assert "type: custom:poolside-heater-gauge" in native
+    assert 'max: 104' in native
+
+
+def test_heater_gauge_keeps_mode_control_visible_and_supports_color_ranges() -> None:
+    """The compact heater gauge exposes safe Climate controls and five bands."""
+    root = Path(__file__).parents[2]
+    gauge = (root / "custom_components/poolside/www/poolside-heater-gauge.js").read_text()
+    native = (root / "docs/native-dashboard.yaml").read_text()
+
+    assert 'class PoolsideHeaterGauge' in gauge
+    assert 'class="toggle"' in gauge
+    assert 'callService("climate", "set_hvac_mode"' in gauge
+    assert 'callService("climate", "set_temperature"' in gauge
+    assert 'ranges.length < 2 || ranges.length > 5' in gauge
+    assert native.count("color:") == 6  # five heater bands plus water tile
 
 
 def test_dashboard_discovers_water_telemetry_alongside_configured_sensors() -> None:

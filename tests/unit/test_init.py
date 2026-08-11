@@ -71,6 +71,7 @@ async def test_async_setup_registers_frontend_assets_when_http_is_available(
     assert captured_urls == [
         (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
         (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-heater-gauge.js?v={VERSION}"),
     ]
 
 
@@ -92,6 +93,7 @@ async def test_async_setup_skips_static_registration_when_http_is_missing(
     assert captured_urls == [
         (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
         (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-heater-gauge.js?v={VERSION}"),
     ]
 
 
@@ -117,6 +119,7 @@ async def test_frontend_module_registration_defers_until_frontend_is_ready(
     assert captured_urls == [
         (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
         (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
+        (hass, f"/poolside/poolside-heater-gauge.js?v={VERSION}"),
     ]
 
 
