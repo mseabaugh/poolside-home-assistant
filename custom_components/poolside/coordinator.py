@@ -22,7 +22,12 @@ from .const import (
     PUSH_RECONNECT_MAX_SECONDS,
     PUSH_RECONNECT_MIN_SECONDS,
 )
-from .exceptions import AuthenticationError, CannotConnectError, PoolsideError
+from .exceptions import (
+    AuthenticationError,
+    CannotConnectError,
+    FlowConfirmationRequiredError,
+    PoolsideError,
+)
 from .models import PoolsideData, RouteGroup, Site
 
 _LOGGER = logging.getLogger(__name__)
@@ -282,7 +287,10 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
             self.async_update_listeners()
             transition["state"] = "Starting circulation"
             self.async_update_listeners()
-            await self.async_request_refresh()
+            # Safety-critical confirmation cannot use the debounced refresh
+            # scheduler: a recent poll may otherwise leave the previous body
+            # cached while the controller has already moved its valves.
+            await self.async_refresh()
             confirmed = self.active_body(site_uuid, group_key)
             if body_uuid is not None and confirmed != body_uuid:
                 raise PoolsideError("Poolside did not confirm the requested body")
@@ -437,7 +445,16 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         changes: dict[str, object],
     ) -> None:
         """Write one safe Control mutation and reconcile confirmation."""
-        await self.client.async_set_control(self.site(site_uuid), control_uuid, changes)
+        site = self.site(site_uuid)
+        control = site.all_controls.get(control_uuid)
+        activating = str(changes.get("Status", "")).lower() in _ACTIVE_FLOW_STATUSES
+        if control and activating and control.is_water_flow_control and control.water_body_uuid:
+            group_key = self.body_group_key(site_uuid, control.water_body_uuid)
+            if self.active_body(site_uuid, group_key) != control.water_body_uuid:
+                raise FlowConfirmationRequiredError(
+                    "Confirm the body-flow change in the Poolside dashboard"
+                )
+        await self.client.async_set_control(site, control_uuid, changes)
         self._pending_controls[(site_uuid, control_uuid)] = dict(changes)
         await self.async_request_refresh()
 

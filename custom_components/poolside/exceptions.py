@@ -41,5 +41,9 @@ class RestrictedControlError(UnsafeWriteError):
     """A discovered Control is currently restricted or disabled."""
 
 
+class FlowConfirmationRequiredError(UnsafeWriteError):
+    """A cross-body activation requires an explicit dashboard confirmation."""
+
+
 class ScheduleMutationUnavailableError(UnsafeWriteError):
     """Schedule mutation is unavailable until conflict behavior is confirmed."""

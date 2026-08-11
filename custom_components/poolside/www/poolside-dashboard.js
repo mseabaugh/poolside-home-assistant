@@ -416,15 +416,49 @@ class PoolsideDashboard extends HTMLElement {
     return `<ha-switch class="toggle" data-entity="${entityId}" aria-label="Toggle ${this._escape(label)}" ${checked ? "checked" : ""} ${disabled}></ha-switch>`;
   }
 
+  async _confirmFlowForEntity(entityId) {
+    const state = this._hass.states[entityId];
+    if (!state?.attributes?.poolside_requires_flow) return true;
+    const bodyId = state.attributes.poolside_body_id;
+    const modeEntity = this._resolveModeEntity();
+    const mode = modeEntity ? this._hass.states[modeEntity] : undefined;
+    const bodyIds = mode?.attributes?.poolside_body_ids || {};
+    const confirmed = bodyIds[mode?.attributes?.confirmed_water_flow];
+    if (!bodyId || bodyId === confirmed) return true;
+    const target = Object.entries(bodyIds).find(([, value]) => value === bodyId)?.[0];
+    const groupId = mode?.attributes?.poolside_group_id;
+    if (!target || !groupId) return false;
+    const current = mode.attributes?.confirmed_water_flow || "Off";
+    const message = `${current} is currently active. Turn it off, switch water flow to ${target}, and then turn on ${this._controlLabel(state)}?`;
+    if (!window.confirm(message)) return false;
+    await this._hass.callService("poolside", "confirm_flow_switch", {
+      group_id: groupId,
+      body_id: bodyId,
+    });
+    return true;
+  }
+
   _wireControls(scope) {
-    scope.querySelectorAll("ha-switch.toggle[data-entity]").forEach((button) => button.addEventListener("change", () => {
+    scope.querySelectorAll("ha-switch.toggle[data-entity]").forEach((button) => button.addEventListener("change", async () => {
       const entityId = button.dataset.entity;
       const domain = entityId.split(".")[0];
+      const activating = domain === "climate" ? button.dataset.climateNext === "heat" : button.checked;
+      if (activating && !(await this._confirmFlowForEntity(entityId))) {
+        button.checked = false;
+        return;
+      }
       if (domain === "climate") return this._hass.callService("climate", "set_hvac_mode", { entity_id: entityId, hvac_mode: button.dataset.climateNext || "off" });
       return this._hass.callService(domain === "light" ? "light" : domain, "toggle", { entity_id: entityId });
     }));
     scope.querySelectorAll(".number").forEach((input) => input.addEventListener("change", () => this._hass.callService("number", "set_value", { entity_id: input.dataset.entity, value: Number(input.value) })));
-    scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", () => this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage: Number(input.value) })));
+    scope.querySelectorAll(".fan-percentage").forEach((input) => input.addEventListener("change", async () => {
+      const percentage = Number(input.value);
+      if (percentage > 0 && !(await this._confirmFlowForEntity(input.dataset.entity))) {
+        input.value = String(this._hass.states[input.dataset.entity]?.attributes?.percentage || 0);
+        return;
+      }
+      this._hass.callService("fan", "set_percentage", { entity_id: input.dataset.entity, percentage });
+    }));
     scope.querySelectorAll(".route-select").forEach((input) => input.addEventListener("change", () => this._hass.callService("select", "select_option", { entity_id: input.dataset.entity, option: input.value })));
     scope.querySelectorAll(".light-brightness").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));
     scope.querySelectorAll(".native-light-slider").forEach((input) => input.addEventListener("change", () => this._hass.callService("light", "turn_on", { entity_id: input.dataset.entity, brightness: Number(input.value) })));

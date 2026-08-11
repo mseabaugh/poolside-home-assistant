@@ -95,11 +95,16 @@ class PoolsideSwitch(PoolsideEntity, SwitchEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         """Mark route members without exposing Poolside identifiers to HA state."""
+        control = self.coordinator.site(self.site_uuid).all_controls[self.control_uuid]
         route = self.coordinator.site(self.site_uuid).route_group_for_control(self.control_uuid)
         if route is None:
-            return super().extra_state_attributes
+            return {
+                **super().extra_state_attributes,
+                "poolside_requires_flow": control.is_water_flow_control,
+            }
         return {
             **super().extra_state_attributes,
+            "poolside_requires_flow": control.is_water_flow_control,
             "poolside_route_group": fingerprint(route.key)[:12],
             "poolside_route_member": True,
         }
@@ -148,13 +153,10 @@ class PoolsideRouteSwitch(PoolsideEntity, SwitchEntity):
 
     @property
     def available(self) -> bool:
-        """Fail closed unless every route member and its body flow are confirmed."""
+        """Keep an inactive-body route visible and Off until explicitly activated."""
         site = self.coordinator.site(self.site_uuid)
-        group_key = self.coordinator.body_group_key(self.site_uuid, self.route_group.body_uuid)
         return bool(
             super().available
-            and self.coordinator.active_body(self.site_uuid, group_key)
-            == self.route_group.body_uuid
             and all(
                 control_uuid in site.all_controls and site.all_controls[control_uuid].available
                 for control_uuid in self.route_group.control_uuids
@@ -168,6 +170,7 @@ class PoolsideRouteSwitch(PoolsideEntity, SwitchEntity):
             **super().extra_state_attributes,
             "poolside_route_group": fingerprint(self.route_group.key)[:12],
             "poolside_control_kind": "route_group",
+            "poolside_requires_flow": True,
             "route_count": len(self.route_group.control_uuids),
             "supports_blend": True,
         }

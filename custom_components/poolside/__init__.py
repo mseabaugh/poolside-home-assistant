@@ -5,17 +5,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import voluptuous as vol
 from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 from .client import PoolsideClient
-from .const import PLATFORMS, VERSION
+from .const import DOMAIN, PLATFORMS, VERSION
 from .coordinator import PoolsideCoordinator
 from .factory import create_client
+from .redact import fingerprint
+
+SERVICE_CONFIRM_FLOW_SWITCH = "confirm_flow_switch"
+ATTR_GROUP_ID = "group_id"
+ATTR_BODY_ID = "body_id"
+_COORDINATORS = "poolside_coordinators"
 
 
 @dataclass(slots=True)
@@ -82,10 +90,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> 
     coordinator = PoolsideCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = PoolsideRuntimeData(client, coordinator)
+    coordinators = hass.data.setdefault(_COORDINATORS, {})
+    coordinators[entry.entry_id] = coordinator
+    _register_flow_confirmation_service(hass)
     _remove_legacy_native_control_entities(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     coordinator.start_push()
     return True
+
+
+def _register_flow_confirmation_service(hass: HomeAssistant) -> None:
+    """Register the dashboard-only confirmed body-flow transition service."""
+    if hass.services.has_service(DOMAIN, SERVICE_CONFIRM_FLOW_SWITCH):
+        return
+
+    async def _confirm_flow_switch(call: ServiceCall) -> None:
+        matches: list[tuple[PoolsideCoordinator, str, str, str]] = []
+        for coordinator in hass.data.get(_COORDINATORS, {}).values():
+            for site in coordinator.data.sites.values():
+                for group in site.body_connection_groups:
+                    group_key = "|".join(sorted(group))
+                    if fingerprint(group_key)[:12] != call.data[ATTR_GROUP_ID]:
+                        continue
+                    matches.extend(
+                        (coordinator, site.uuid, group_key, body_uuid)
+                        for body_uuid in group
+                        if fingerprint(body_uuid)[:12] == call.data[ATTR_BODY_ID]
+                    )
+        if len(matches) != 1:
+            raise HomeAssistantError("Confirmed Poolside body flow is not uniquely available")
+        coordinator, site_uuid, group_key, body_uuid = matches[0]
+        await coordinator.async_run_flow_switch(site_uuid, group_key, body_uuid)
+        coordinator.set_dashboard_context(site_uuid, group_key, body_uuid)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CONFIRM_FLOW_SWITCH,
+        _confirm_flow_switch,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_GROUP_ID): str,
+                vol.Required(ATTR_BODY_ID): str,
+            }
+        ),
+    )
 
 
 def _remove_legacy_native_control_entities(
@@ -133,4 +181,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) ->
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     await entry.runtime_data.coordinator.async_shutdown()
+    coordinators = hass.data.get(_COORDINATORS, {})
+    coordinators.pop(entry.entry_id, None)
+    if not coordinators:
+        hass.services.async_remove(DOMAIN, SERVICE_CONFIRM_FLOW_SWITCH)
     return True

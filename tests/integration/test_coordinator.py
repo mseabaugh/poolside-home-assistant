@@ -319,12 +319,37 @@ async def test_flow_switch_waits_for_confirmation_without_hiding_body_controls(
     coordinator._active_bodies = None  # type: ignore[assignment]
     coordinator.set_active_body(site.uuid, "pool", "pool|spa")
     coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
-    coordinator.async_request_refresh = AsyncMock(  # type: ignore[method-assign]
+    coordinator.async_refresh = AsyncMock(  # type: ignore[method-assign]
         side_effect=lambda: coordinator._active_bodies.__setitem__((site.uuid, "pool|spa"), "spa")
     )
     await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
     client.async_run_flow_switch.assert_awaited_once_with(site, "spa")  # type: ignore[attr-defined]
     assert coordinator.flow_transition(site.uuid, "pool|spa") is None
+
+
+async def test_cross_body_control_activation_requires_confirmed_flow(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    user_config: dict[str, Any],
+) -> None:
+    """Activation fails closed across bodies while Off and setpoints remain writable."""
+    site = _route_site(user_config)
+    client = BatchClient(PoolsideData({site.uuid: site}))
+    client.async_set_control = AsyncMock(return_value=True)  # type: ignore[attr-defined]
+    coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
+    coordinator.data = PoolsideData({site.uuid: site})
+    coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+    group_key = coordinator.body_group_key(site.uuid, "pool")
+
+    coordinator.set_active_body(site.uuid, "spa", group_key)
+    with pytest.raises(PoolsideError, match="Confirm the body-flow change"):
+        await coordinator.async_set_control(site.uuid, "filter-one", {"Status": "ON"})
+    client.async_set_control.assert_not_awaited()  # type: ignore[attr-defined]
+
+    await coordinator.async_set_control(site.uuid, "filter-one", {"PowerLevel": 42})
+    coordinator.set_active_body(site.uuid, "pool", group_key)
+    await coordinator.async_set_control(site.uuid, "filter-one", {"Status": "ON"})
+    assert client.async_set_control.await_count == 2  # type: ignore[attr-defined]
 
 
 async def test_flow_switch_rejection_and_invalid_group_fail_closed(
@@ -376,7 +401,7 @@ async def test_flow_switch_fails_when_cloud_confirms_a_different_body(
     coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
     coordinator.data = PoolsideData({site.uuid: site})
     coordinator._active_bodies[(site.uuid, "pool|spa")] = "pool"
-    coordinator.async_request_refresh = AsyncMock()  # type: ignore[method-assign]
+    coordinator.async_refresh = AsyncMock()  # type: ignore[method-assign]
     with pytest.raises(PoolsideError, match="confirm"):
         await coordinator.async_run_flow_switch(site.uuid, "pool|spa", "spa")
     assert coordinator.active_body(site.uuid, "pool|spa") == "pool"

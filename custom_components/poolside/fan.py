@@ -80,6 +80,11 @@ class PoolsideBlowerFan(PoolsideEntity, FanEntity):
         )
 
     @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose that activation participates in confirmed body flow."""
+        return {**super().extra_state_attributes, "poolside_requires_flow": True}
+
+    @property
     def percentage(self) -> int | None:
         """Return Poolside's native 0-100 PowerLevel."""
         value = self._control.desired.get("PowerLevel") if self._control else None

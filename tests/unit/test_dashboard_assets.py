@@ -152,6 +152,23 @@ def test_dashboard_classifies_poolside_heat_controls_as_heating() -> None:
     assert r"\bheat(?:er|ing)?\b" in groups
 
 
+def test_dashboard_confirms_cross_body_activation_before_native_service() -> None:
+    """Inactive-body controls remain native but require an explicit flow confirmation."""
+    dashboard = (
+        Path(__file__).parents[2]
+        / "custom_components"
+        / "poolside"
+        / "www"
+        / "poolside-dashboard.js"
+    ).read_text(encoding="utf-8")
+
+    assert "_confirmFlowForEntity(entityId)" in dashboard
+    assert "poolside_requires_flow" in dashboard
+    assert "window.confirm(message)" in dashboard
+    assert '"poolside", "confirm_flow_switch"' in dashboard
+    assert "button.checked = false" in dashboard
+
+
 def test_homeowner_dashboard_is_conditional_and_rounds_live_values() -> None:
     """The homeowner view must avoid empty sections and raw controller precision."""
     dashboard = (

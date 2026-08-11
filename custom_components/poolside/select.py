@@ -157,6 +157,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
                     label: fingerprint(body_uuid)[:12] if body_uuid else None
                     for label, body_uuid in self._options_map.items()
                 },
+                "poolside_group_id": fingerprint(self.group_key)[:12],
                 "flow_procedure_available": self.coordinator.site(
                     self.site_uuid
                 ).flow_procedure_complete,
@@ -170,6 +171,7 @@ class PoolsideActiveBodySelect(PoolsideEntity, SelectEntity):
                 label: fingerprint(body_uuid)[:12] if body_uuid else None
                 for label, body_uuid in self._options_map.items()
             },
+            "poolside_group_id": fingerprint(self.group_key)[:12],
             "flow_procedure_available": True,
             "transition_state": transition["state"],
             **transition,

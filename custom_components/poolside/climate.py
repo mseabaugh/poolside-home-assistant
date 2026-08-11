@@ -97,6 +97,11 @@ class PoolsideHeaterClimate(PoolsideEntity, ClimateEntity):
         )
 
     @property
+    def extra_state_attributes(self) -> dict[str, object]:
+        """Expose that heating activation participates in confirmed body flow."""
+        return {**super().extra_state_attributes, "poolside_requires_flow": True}
+
+    @property
     def target_temperature(self) -> float | None:
         """Return the reported safe heater setpoint."""
         value = self._control.desired.get("SetPoint") if self._control else None

@@ -765,7 +765,8 @@ async def test_controller_derived_route_entities_pair_selection_and_master_switc
     coordinator.set_active_body(site.uuid, "spa", group_key)
     inactive_rate = PoolsideControlNumber(coordinator, site.uuid, "spillover-control")
     assert inactive_rate.available
-    assert not master.available
+    assert master.available
+    assert master.extra_state_attributes["poolside_requires_flow"] is True
 
 
 async def test_switch_write_round_trip(

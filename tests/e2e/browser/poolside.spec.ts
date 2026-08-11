@@ -164,8 +164,12 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   const heaterToggle = dashboard.locator(".heater ha-switch.toggle");
   await expect(heaterToggle).toBeVisible();
   await expect(heaterToggle).toHaveAttribute("data-entity", /^switch\./);
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("switch water flow to Spa");
+    await dialog.accept();
+  });
   await heaterToggle.evaluate((toggle: any) => {
-    toggle.checked = false;
+    toggle.checked = true;
     toggle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   });
   await expect
@@ -178,16 +182,19 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
         (state: { ControlUUID: string }) => state.ControlUUID === "heat-one",
       ).Status;
     })
-    .toBe("OFF");
+    .toBe("ON");
   await expect
     .poll(async () => {
       const response = await request.get(`${process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080"}/test/state`);
       const body = await response.json();
-      return body.desired.DesiredStates.find(
-        (state: { ControlUUID: string }) => state.ControlUUID === "filter-one",
-      ).Status;
+      return body.desired.DesiredStates
+        .filter((state: { ControlUUID: string }) =>
+          ["filter-one", "spa-filter"].includes(state.ControlUUID),
+        )
+        .map((state: { Status: string }) => state.Status)
+        .join(",");
     })
-    .toBe("ON");
+    .toBe("OFF,ON");
   const fakeUrl = process.env.FAKE_POOLSIDE_URL ?? "http://127.0.0.1:8080";
   page.once("dialog", (dialog) => dialog.accept());
   // The test-only card is appended outside HA's application shell. Dispatch the
@@ -200,7 +207,7 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
       const response = await request.get(`${fakeUrl}/test/state`);
       const body = await response.json();
       return body.desired.DesiredStates
-        .filter((state: { ControlUUID: string }) => ["filter-one", "heat-one"].includes(state.ControlUUID))
+        .filter((state: { ControlUUID: string }) => ["filter-one", "spa-filter", "heat-one"].includes(state.ControlUUID))
         .every((state: { Status: string }) => state.Status === "OFF");
     })
     .toBe(true);

@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "poolside"
 NAME: Final = "Poolside"
-VERSION: Final = "0.1.49"
+VERSION: Final = "0.1.50"
 
 API_URL: Final = "https://api.poolside.cloud/api/jsonrpc/v1"
 WS_URL: Final = "wss://gateway.poolside.cloud/websocket"

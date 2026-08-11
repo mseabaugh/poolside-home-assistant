@@ -1,0 +1,16 @@
+confirm_flow_switch:
+  name: Confirm body flow switch
+  description: >-
+    Used by the bundled Poolside dashboard after the user confirms a safe
+    server-side transition between connected bodies of water.
+  fields:
+    group_id:
+      name: Body group ID
+      required: true
+      selector:
+        text:
+    body_id:
+      name: Body ID
+      required: true
+      selector:
+        text:

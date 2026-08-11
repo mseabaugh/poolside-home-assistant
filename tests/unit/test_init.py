@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, UrlManager
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components import poolside
-from custom_components.poolside.const import VERSION
+from custom_components.poolside.const import DOMAIN, VERSION
+from custom_components.poolside.models import BodyOfWater, PoolsideData, Site
+from custom_components.poolside.redact import fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -113,3 +118,82 @@ async def test_frontend_module_registration_defers_until_frontend_is_ready(
         (hass, f"/poolside/poolside-body-selector.js?v={VERSION}"),
         (hass, f"/poolside/poolside-dashboard.js?v={VERSION}"),
     ]
+
+
+async def test_confirm_flow_service_resolves_only_opaque_discovered_ids(
+    hass: HomeAssistant,
+) -> None:
+    """The dashboard service resolves one discovered group without exposing UUIDs."""
+    pool = BodyOfWater("pool-id", "Pool", "Pool", "site-id")
+    spa = BodyOfWater(
+        "spa-id",
+        "Spa",
+        "Spa",
+        "site-id",
+        {"Spillover": {"ConnectedThings": [{"UUID": "pool-id"}]}},
+    )
+    site = Site("site-id", "Synthetic", bodies_of_water={pool.uuid: pool, spa.uuid: spa})
+    coordinator = SimpleNamespace(
+        data=PoolsideData({site.uuid: site}),
+        async_run_flow_switch=AsyncMock(),
+        set_dashboard_context=Mock(),
+    )
+    hass.data[poolside._COORDINATORS] = {"entry": coordinator}
+    poolside._register_flow_confirmation_service(hass)
+    poolside._register_flow_confirmation_service(hass)
+    group_key = "pool-id|spa-id"
+    data = {
+        poolside.ATTR_GROUP_ID: fingerprint(group_key)[:12],
+        poolside.ATTR_BODY_ID: fingerprint(spa.uuid)[:12],
+    }
+
+    await hass.services.async_call(
+        DOMAIN,
+        poolside.SERVICE_CONFIRM_FLOW_SWITCH,
+        data,
+        blocking=True,
+    )
+    coordinator.async_run_flow_switch.assert_awaited_once_with(site.uuid, group_key, spa.uuid)
+    coordinator.set_dashboard_context.assert_called_once_with(site.uuid, group_key, spa.uuid)
+
+    with pytest.raises(HomeAssistantError, match="not uniquely available"):
+        await hass.services.async_call(
+            DOMAIN,
+            poolside.SERVICE_CONFIRM_FLOW_SWITCH,
+            {**data, poolside.ATTR_GROUP_ID: "unknown-group"},
+            blocking=True,
+        )
+    with pytest.raises(HomeAssistantError, match="not uniquely available"):
+        await hass.services.async_call(
+            DOMAIN,
+            poolside.SERVICE_CONFIRM_FLOW_SWITCH,
+            {**data, poolside.ATTR_BODY_ID: "unknown-body"},
+            blocking=True,
+        )
+    hass.services.async_remove(DOMAIN, poolside.SERVICE_CONFIRM_FLOW_SWITCH)
+
+
+async def test_unload_keeps_shared_flow_service_for_another_entry(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unloading one account cannot remove the service used by another account."""
+    coordinator = SimpleNamespace(async_shutdown=AsyncMock())
+    entry = SimpleNamespace(
+        entry_id="departing-entry",
+        runtime_data=SimpleNamespace(coordinator=coordinator),
+    )
+    hass.data[poolside._COORDINATORS] = {
+        entry.entry_id: coordinator,
+        "remaining-entry": object(),
+    }
+    monkeypatch.setattr(
+        hass.config_entries,
+        "async_unload_platforms",
+        AsyncMock(return_value=True),
+    )
+    hass.services.async_register(DOMAIN, poolside.SERVICE_CONFIRM_FLOW_SWITCH, AsyncMock())
+
+    assert await poolside.async_unload_entry(hass, entry)  # type: ignore[arg-type]
+    assert hass.services.has_service(DOMAIN, poolside.SERVICE_CONFIRM_FLOW_SWITCH)
+    coordinator.async_shutdown.assert_awaited_once()
+    hass.services.async_remove(DOMAIN, poolside.SERVICE_CONFIRM_FLOW_SWITCH)

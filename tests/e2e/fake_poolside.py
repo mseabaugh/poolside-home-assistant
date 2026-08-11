@@ -53,6 +53,23 @@ class FakePoolsideService:
         for control in site["Controls"]:
             if control["UUID"] in bodies:
                 control["BodyOfWater"] = bodies[control["UUID"]]
+        pool_filter = next(
+            control for control in site["Controls"] if control["UUID"] == "filter-one"
+        )
+        spa_filter = deepcopy(pool_filter)
+        spa_filter.update(
+            {"UUID": "spa-filter", "Name": "Spa Filter", "BodyOfWater": "synthetic-spa"}
+        )
+        site["Controls"].append(spa_filter)
+        pool_desired = next(
+            state for state in self.desired["DesiredStates"] if state["ControlUUID"] == "filter-one"
+        )
+        spa_desired = deepcopy(pool_desired)
+        spa_desired.update({"ControlUUID": "spa-filter", "Status": "OFF"})
+        self.desired["DesiredStates"].append(spa_desired)
+        next(
+            state for state in self.desired["DesiredStates"] if state["ControlUUID"] == "heat-one"
+        )["Status"] = "OFF"
 
     def application(self) -> web.Application:
         """Build an aiohttp application without global mutable state."""
@@ -80,7 +97,7 @@ class FakePoolsideService:
         """Require the synthetic credential on application endpoints."""
         return request.headers.get("Authorization") == f"Bearer {SYNTHETIC_TOKEN}"
 
-    async def rpc(self, request: web.Request) -> web.Response:  # noqa: C901
+    async def rpc(self, request: web.Request) -> web.Response:  # noqa: C901, PLR0912
         """Handle confirmed JSON-RPC calls and mutate only synthetic Controls."""
         try:
             payload = await request.json()
@@ -103,9 +120,37 @@ class FakePoolsideService:
         elif method == "Site.getDesiredState":
             result = self.desired
         elif method == "Site.getAllConfig":
-            # The synthetic fixture has no verified flow procedure; the
-            # integration must therefore keep the body selector unavailable.
-            result = {}
+            result = {
+                "ControlBasedProcedures": [
+                    {
+                        "FlowUUID": "synthetic-body-flow",
+                        "Procedures": [
+                            {"ControlUUID": "filter-one"},
+                            {"ControlUUID": "spa-filter"},
+                        ],
+                    }
+                ],
+                "FlowBasedProcedures": [{"FlowUUID": "synthetic-body-flow"}],
+            }
+        elif method == "Site.runFlowSwitchProcedure":
+            body_uuid = params.get("BodyOfWaterUUID")
+            if body_uuid not in {"synthetic-pool", "synthetic-spa"}:
+                result = False
+            else:
+                self._merge_desired(
+                    [
+                        {
+                            "ControlUUID": "filter-one",
+                            "Status": "ON" if body_uuid == "synthetic-pool" else "OFF",
+                        },
+                        {
+                            "ControlUUID": "spa-filter",
+                            "Status": "ON" if body_uuid == "synthetic-spa" else "OFF",
+                        },
+                    ]
+                )
+                await self._broadcast("Site.setDesiredState", {"changed": True})
+                result = True
         elif method == "Site.setDesiredState2":
             records = params.get("DesiredStates", [])
             self._merge_desired(records)
