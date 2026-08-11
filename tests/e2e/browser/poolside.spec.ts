@@ -90,6 +90,13 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     )
     .toBe(true);
 
+  await page.reload();
+  await expect
+    .poll(
+      () => page.evaluate(() => Boolean(customElements.get("poolside-status-badge"))),
+      { timeout: 60_000, message: "Poolside status badge module should register after reload" },
+    )
+    .toBe(true);
   const statusBadge = page.locator("poolside-status-badge").last();
   await page.locator("home-assistant").evaluate((app: any) => {
     const states = Object.entries(app.hass.states) as [string, any][];
@@ -107,7 +114,11 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   });
   await expect(statusBadge).toBeVisible({ timeout: 60_000 });
   await expect(statusBadge.locator(".name")).toHaveText("Poolside");
-  await expect(statusBadge.locator(".metric")).toHaveCount(3);
+  // The synthetic site only exposes the aggregate light among these configured
+  // values. Missing telemetry must be hidden instead of rendering Unknown.
+  await expect(statusBadge.locator(".metric")).toHaveCount(1);
+  await expect(statusBadge.locator(".metric")).toContainText("Lights");
+  await expect(statusBadge).not.toContainText(/unknown|unavailable/i);
 
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers

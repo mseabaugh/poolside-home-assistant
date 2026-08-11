@@ -375,12 +375,22 @@ async def test_light_group_batches_only_discovered_lights_and_reconciles(
             "light-one": {"Status": "OFF"},
         }
     ]
-    coordinator.async_request_refresh.assert_awaited_once()  # type: ignore[attr-defined]
+    coordinator.async_request_refresh.assert_awaited_once()
 
     with pytest.raises(ValueError, match="non-light"):
         await coordinator.async_set_light_group(
             site.uuid,
             ("light-one", "filter-one"),
+            {"Status": "ON"},
+        )
+
+    rejecting_client = BatchClient(PoolsideData({site.uuid: site}), write_result=False)
+    rejecting = PoolsideCoordinator(hass, config_entry, rejecting_client)  # type: ignore[arg-type]
+    rejecting.data = PoolsideData({site.uuid: site})
+    with pytest.raises(PoolsideError, match="rejected"):
+        await rejecting.async_set_light_group(
+            site.uuid,
+            ("light-one",),
             {"Status": "ON"},
         )
 

@@ -373,10 +373,18 @@ async def test_all_lights_is_site_scoped_and_batches_safe_light_controls(
     assert group.unique_id == "site-alpha_all_lights"
     assert group.extra_state_attributes["light_count"] == 2
     assert group.extra_state_attributes["brightness_percent"] == 100
+    initial_available = group.available
+    assert initial_available
+    assert group.is_on
+    assert group.color_mode is not None
+    initial_color = cast("Any", group).rgb_color
+    assert initial_color is None
+    await group.async_turn_on()
     await group.async_turn_on(brightness=128, rgb_color=(12, 34, 56))
     await group.async_turn_off()
 
-    site_uuid, control_uuids, changes = coordinator.light_group_writes[0]
+    assert coordinator.light_group_writes[0][2] == {"Status": "ON"}
+    site_uuid, control_uuids, changes = coordinator.light_group_writes[1]
     assert site_uuid == "site-alpha"
     assert control_uuids == ("light-combined", "light-one")
     assert changes == {
@@ -385,7 +393,52 @@ async def test_all_lights_is_site_scoped_and_batches_safe_light_controls(
         "Color": '#[{"duration":0,"RGB":"12|34|56","fadeIn":0}]',
         "LightName": '#[{"duration":0,"RGB":"12|34|56","fadeIn":0}]',
     }
-    assert coordinator.light_group_writes[1][2] == {"Status": "OFF"}
+    assert coordinator.light_group_writes[2][2] == {"Status": "OFF"}
+
+    site = coordinator.site("site-alpha")
+    encoded_color = '#[{"duration":0,"RGB":"12|34|56","fadeIn":0}]'
+    same_color = {
+        uuid: replace(control, desired={"Brightness": 101, "Color": encoded_color})
+        for uuid, control in site.controls.items()
+        if control.is_light
+    }
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                controls={**site.controls, **same_color},
+                combined_controls={},
+            )
+        }
+    )
+    assert group.brightness is None
+    assert cast("Any", group).rgb_color == (12, 34, 56)
+
+    malformed = {
+        uuid: replace(control, desired={"Brightness": True, "Color": "#GGGGGG"})
+        for uuid, control in site.controls.items()
+        if control.is_light
+    }
+    coordinator.data = PoolsideData(
+        {
+            site.uuid: replace(
+                site,
+                controls={
+                    **site.controls,
+                    **malformed,
+                },
+                combined_controls={},
+            )
+        }
+    )
+    assert group.brightness is None
+    malformed_color = cast("Any", group).rgb_color
+    assert malformed_color is None
+
+    no_lights = replace(coordinator.site(site.uuid), controls={}, combined_controls={})
+    coordinator.data = PoolsideData({site.uuid: no_lights})
+    assert not group.available
+    assert list(light_entities(coordinator)) == []
 
 
 async def test_number_and_theme_failure_paths(
