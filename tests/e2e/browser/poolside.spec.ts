@@ -133,7 +133,7 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     document.body.append(editor);
   });
   await expect(badgeEditor).toBeVisible();
-  await expect(badgeEditor.locator('ha-entity-picker[data-key="lights_entity"]')).toBeVisible();
+  await expect(badgeEditor.locator('ha-entity-picker[data-key="lights_entity"]')).toHaveCount(1);
 
   const gaugeEditor = page.locator("poolside-heater-gauge-editor").last();
   await page.locator("home-assistant").evaluate((app: any) => {
@@ -142,7 +142,8 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
     editor.hass = app.hass;
     document.body.append(editor);
   });
-  await expect(gaugeEditor.locator('ha-entity-picker[data-key="entity"]')).toBeVisible();
+  await expect(gaugeEditor).toBeVisible();
+  await expect(gaugeEditor.locator('ha-entity-picker[data-key="entity"]')).toHaveCount(1);
 
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers
