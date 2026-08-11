@@ -46,6 +46,12 @@ def test_poolside_status_badge_uses_explicit_ids_and_native_badge_contract() -> 
 
     assert "window.customBadges" in badge
     assert 'type:"poolside-status-badge"' in badge
+    assert 'document.createElement("poolside-status-badge-editor")' in badge
+    assert 'customElements.define("poolside-status-badge-editor"' in badge
+    assert 'new CustomEvent("config-changed"' in badge
+    assert 'this._picker("lights_entity", "All Poolside lights", "light")' in badge
+    assert "config.lights_entity || config.entity" in badge
+    assert "sensor.poolside_water_temperature" not in badge
     assert 'new CustomEvent("hass-more-info"' in badge
     assert 'key.endsWith("_entity")' in badge
     assert "friendly_name" not in badge

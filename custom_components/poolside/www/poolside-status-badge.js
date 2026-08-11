@@ -1,16 +1,12 @@
 /** Compact Poolside homeowner status badge using explicitly configured entity IDs. */
 class PoolsideStatusBadge extends HTMLElement {
-  static getConfigElement() { return document.createElement("poolside-status-badge"); }
+  static getConfigElement() { return document.createElement("poolside-status-badge-editor"); }
   static getStubConfig() {
-    return {
-      water_entity: "sensor.poolside_water_temperature",
-      air_entity: "sensor.poolside_air_temperature",
-      lights_entity: "light.poolside_all_lights",
-    };
+    return { lights_entity: "" };
   }
 
   setConfig(config) {
-    if (!config || !Object.keys(config).some((key) => key.endsWith("_entity"))) {
+    if (!config || (!config.entity && !Object.keys(config).some((key) => key.endsWith("_entity")))) {
       throw new Error("poolside-status-badge requires at least one explicit entity ID");
     }
     for (const [key, value] of Object.entries(config)) {
@@ -18,7 +14,13 @@ class PoolsideStatusBadge extends HTMLElement {
         throw new Error(`${key} must be an entity ID`);
       }
     }
-    this.config = config;
+    if (config.entity != null && typeof config.entity !== "string") {
+      throw new Error("entity must be an entity ID");
+    }
+    this.config = {
+      ...config,
+      lights_entity: config.lights_entity || config.entity,
+    };
     const root = this.shadowRoot || this.attachShadow({ mode: "open" });
     root.innerHTML = `
       <style>
@@ -116,7 +118,73 @@ class PoolsideStatusBadge extends HTMLElement {
   }
 }
 
+/** Native Home Assistant visual editor for explicit Poolside badge entity IDs. */
+class PoolsideStatusBadgeEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._applyHass();
+  }
+
+  _render() {
+    if (!this._config) return;
+    const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+    root.innerHTML = `
+      <style>
+        :host { display:block; }
+        .editor { display:grid; gap:12px; padding:8px 0; }
+        ha-textfield, ha-entity-picker { display:block; width:100%; }
+      </style>
+      <div class="editor">
+        <ha-textfield data-key="name" label="Name"></ha-textfield>
+        ${this._picker("water_entity", "Water temperature", "sensor")}
+        ${this._picker("air_entity", "Air temperature", "sensor")}
+        ${this._picker("primary_pump_entity", "Main pump percentage", "sensor")}
+        ${this._picker("feature_pump_entity", "Feature pump percentage", "sensor")}
+        ${this._picker("lights_entity", "All Poolside lights", "light")}
+        ${this._picker("ph_entity", "pH", "sensor")}
+        ${this._picker("orp_entity", "ORP", "sensor")}
+      </div>`;
+    const name = root.querySelector('[data-key="name"]');
+    name.value = this._config.name || "";
+    name.addEventListener("change", (event) => this._changed("name", event.target.value));
+    for (const picker of root.querySelectorAll("ha-entity-picker")) {
+      const key = picker.dataset.key;
+      picker.value = this._config[key] || (key === "lights_entity" ? this._config.entity : "") || "";
+      picker.addEventListener("value-changed", (event) => this._changed(key, event.detail?.value));
+    }
+    this._applyHass();
+  }
+
+  _picker(key, label, domain) {
+    return `<ha-entity-picker data-key="${key}" label="${label}" include-domains='["${domain}"]' allow-custom-entity></ha-entity-picker>`;
+  }
+
+  _applyHass() {
+    if (!this.shadowRoot || !this._hass) return;
+    for (const picker of this.shadowRoot.querySelectorAll("ha-entity-picker")) picker.hass = this._hass;
+  }
+
+  _changed(key, value) {
+    const config = { ...this._config };
+    if (value) config[key] = value;
+    else delete config[key];
+    if (key === "lights_entity") delete config.entity;
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      bubbles: true,
+      composed: true,
+      detail: { config },
+    }));
+  }
+}
+
 if (!customElements.get("poolside-status-badge")) customElements.define("poolside-status-badge", PoolsideStatusBadge);
+if (!customElements.get("poolside-status-badge-editor")) customElements.define("poolside-status-badge-editor", PoolsideStatusBadgeEditor);
 window.customBadges = window.customBadges || [];
 if (!window.customBadges.some((badge) => badge.type === "poolside-status-badge")) {
   window.customBadges.push({

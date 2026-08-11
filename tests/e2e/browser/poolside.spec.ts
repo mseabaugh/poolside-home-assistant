@@ -120,6 +120,21 @@ test("user adds Poolside and safely shuts down an active water-flow group", asyn
   await expect(statusBadge.locator(".metric")).toContainText("Lights");
   await expect(statusBadge).not.toContainText(/unknown|unavailable/i);
 
+  const badgeEditor = page.locator("poolside-status-badge-editor").last();
+  await page.locator("home-assistant").evaluate((app: any) => {
+    const lights = Object.entries(app.hass.states).find(
+      ([id, state]: [string, any]) =>
+        id.startsWith("light.") && /all lights/i.test(state.attributes?.friendly_name ?? ""),
+    )?.[0];
+    if (!lights) throw new Error("Poolside aggregate light was not created");
+    const editor = document.createElement("poolside-status-badge-editor") as any;
+    editor.setConfig({ type: "custom:poolside-status-badge", entity: lights });
+    editor.hass = app.hass;
+    document.body.append(editor);
+  });
+  await expect(badgeEditor).toBeVisible();
+  await expect(badgeEditor.locator('ha-entity-picker[data-key="lights_entity"]')).toBeVisible();
+
   await page.goto("/lovelace/0");
   // A full navigation is intentional: it verifies the integration registers
   // its bundled card module in a fresh frontend, not only in an already warm
