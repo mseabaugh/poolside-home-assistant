@@ -372,6 +372,7 @@ async def test_all_lights_is_site_scoped_and_batches_safe_light_controls(
 
     assert group.unique_id == "site-alpha_all_lights"
     assert group.extra_state_attributes["light_count"] == 2
+    assert group.extra_state_attributes["poolside_site_light_group"] is True
     assert group.extra_state_attributes["brightness_percent"] == 100
     initial_available = group.available
     assert initial_available

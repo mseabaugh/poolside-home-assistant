@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any, Final, NoReturn, Protocol
@@ -22,8 +23,17 @@ _LOGGER = logging.getLogger(__name__)
 _HTTP_ERROR_STATUS = 400
 _AUTH_FAILURES: Final = frozenset({401, 403})
 _LOGIN_METHOD: Final = "User.login"
+_REFRESH_METHOD: Final = "User.refreshToken"
 _TOKEN_FIELDS: Final = ("accessToken", "access_token", "token", "Token")
 _VISIBLE_FAILURES: Final = frozenset({"authentication_error", "connection_error"})
+
+
+@dataclass(frozen=True, slots=True)
+class AuthTokens:
+    """A Poolside access/refresh token pair."""
+
+    access_token: str
+    refresh_token: str
 
 
 def _log_completion(
@@ -104,12 +114,14 @@ def resolve_endpoints(environment: Mapping[str, str] | None = None) -> Endpoints
 class CloudTransport:
     """JSON-RPC over Poolside HTTPS and WebSocket cloud endpoints."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         session: aiohttp.ClientSession,
         access_token: str,
         endpoints: Endpoints | None = None,
         *,
+        refresh_token: str | None = None,
+        token_updated: Callable[[AuthTokens], Awaitable[None]] | None = None,
         websocket_heartbeat: float | None = 30,
     ) -> None:
         """Initialize a transport without validating or logging the credential."""
@@ -117,6 +129,9 @@ class CloudTransport:
             raise ValueError("Access token must not be empty")
         self._session = session
         self._access_token = access_token
+        self._refresh_token = refresh_token
+        self._token_updated = token_updated
+        self._refresh_lock = asyncio.Lock()
         self._endpoints = endpoints or Endpoints()
         self._websocket_heartbeat = websocket_heartbeat
 
@@ -131,6 +146,16 @@ class CloudTransport:
 
     async def async_rpc(self, method: str, params: Mapping[str, Any] | None = None) -> Any:
         """Execute one JSON-RPC operation with body-free observability."""
+        try:
+            return await self._async_rpc_once(method, params)
+        except AuthenticationError:
+            if self._refresh_token is None:
+                raise
+            await self.async_refresh_tokens()
+            return await self._async_rpc_once(method, params)
+
+    async def _async_rpc_once(self, method: str, params: Mapping[str, Any] | None = None) -> Any:
+        """Execute one RPC attempt using the current access token."""
         trace_id = str(uuid4())
         correlation_id = trace_id.replace("-", "")[:12]
         _LOGGER.debug(
@@ -195,6 +220,24 @@ class CloudTransport:
         _log_completion(method, started, "success", correlation_id)
         return decode_json_value(mapping["result"])
 
+    async def async_refresh_tokens(self) -> AuthTokens:
+        """Rotate both tokens through the captured Poolside refresh operation."""
+        async with self._refresh_lock:
+            if self._refresh_token is None:
+                raise AuthenticationError("Poolside refresh token is unavailable")
+            tokens = await _async_token_request(
+                self._session,
+                self._endpoints,
+                _REFRESH_METHOD,
+                {},
+                self._refresh_token,
+            )
+            self._access_token = tokens.access_token
+            self._refresh_token = tokens.refresh_token
+            if self._token_updated is not None:
+                await self._token_updated(tokens)
+            return tokens
+
     async def async_messages(self) -> AsyncIterator[Mapping[str, Any]]:
         """Yield validated server push objects from one WebSocket connection."""
         try:
@@ -236,7 +279,7 @@ async def async_login(
     username: str,
     password: str,
     endpoints: Endpoints | None = None,
-) -> str:
+) -> AuthTokens:
     """Exchange Poolside credentials for a bearer token through ``User.login``."""
     if not username.strip() or not password:
         raise ValueError("Email and password must not be empty")
@@ -299,8 +342,8 @@ async def _async_login_request(
     return payload
 
 
-def _parse_login_response(payload: Any, started: float, correlation_id: str) -> str:
-    """Parse a login response and return only its bearer token."""
+def _parse_login_response(payload: Any, started: float, correlation_id: str) -> AuthTokens:
+    """Parse a login response and retain the rotating token pair."""
     mapping = require_mapping(payload, "Poolside login response")
     if "error" in mapping:
         error = mapping["error"]
@@ -314,19 +357,83 @@ def _parse_login_response(payload: Any, started: float, correlation_id: str) -> 
         _log_completion(_LOGIN_METHOD, started, "protocol_error", correlation_id)
         raise ProtocolError("Poolside login response did not contain a result")
 
-    token = _extract_login_token(decode_json_value(mapping["result"]))
-    if token is None:
+    tokens = _extract_auth_tokens(decode_json_value(mapping["result"]))
+    if tokens is None:
         _log_completion(_LOGIN_METHOD, started, "protocol_error", correlation_id)
         raise ProtocolError("Poolside login did not return an access token")
     _log_completion(_LOGIN_METHOD, started, "success", correlation_id)
-    return token
+    return tokens
+
+
+async def _async_token_request(
+    session: aiohttp.ClientSession,
+    endpoints: Endpoints,
+    method: str,
+    params: Mapping[str, Any],
+    bearer_token: str,
+) -> AuthTokens:
+    """Execute a captured token exchange without exposing credentials."""
+    trace_id = str(uuid4())
+    correlation_id = trace_id.replace("-", "")[:12]
+    request = {
+        "id": str(uuid4()),
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": dict(params),
+        "traceId": trace_id,
+    }
+    started = monotonic()
+    try:
+        async with session.post(
+            endpoints.api_url,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {bearer_token}",
+                "Content-Type": "application/json",
+            },
+            json=request,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as response:
+            if response.status in _AUTH_FAILURES:
+                raise AuthenticationError("Poolside rejected the refresh token")
+            if response.status >= _HTTP_ERROR_STATUS:
+                raise CannotConnectError("Poolside token refresh failed", status=response.status)
+            payload = await response.json(content_type=None)
+    except (AuthenticationError, CannotConnectError, ProtocolError) as err:
+        _log_known_error(method, started, correlation_id, err)
+    except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError) as err:
+        _log_completion(method, started, "connection_error", correlation_id)
+        raise CannotConnectError("Poolside token refresh failed") from err
+    mapping = require_mapping(payload, "token response")
+    if "error" in mapping:
+        raise AuthenticationError("Poolside rejected the refresh token")
+    tokens = _extract_auth_tokens(decode_json_value(mapping.get("result")))
+    if tokens is None:
+        raise ProtocolError("Poolside token response did not contain both tokens")
+    _log_completion(method, started, "success", correlation_id)
+    return tokens
+
+
+def _extract_auth_tokens(result: Any) -> AuthTokens | None:
+    """Extract the required access/refresh pair without logging either token."""
+    if not isinstance(result, Mapping):
+        return None
+    access_token = None
+    for field in _TOKEN_FIELDS:
+        value = result.get(field)
+        if isinstance(value, str) and value.strip():
+            access_token = value.strip()
+            break
+    refresh = result.get("refreshToken") or result.get("refresh_token")
+    if access_token is None or not isinstance(refresh, str) or not refresh.strip():
+        return None
+    return AuthTokens(access_token, refresh.strip())
 
 
 def _extract_login_token(result: Any) -> str | None:
-    """Extract the bearer token without retaining or logging the submitted password."""
+    """Compatibility helper returning only an access token when present."""
     if isinstance(result, str):
-        token = result.strip()
-        return token or None
+        return result.strip() or None
     if not isinstance(result, Mapping):
         return None
     for field in _TOKEN_FIELDS:

@@ -142,10 +142,13 @@ class PoolsideDashboard extends HTMLElement {
     const diagnostics = [...new Set([...discovered.telemetry, ...configuredDiagnostics])];
     const pool = configured("pool_entities", discovered.pool, safeControl);
     const spa = configured("spa_entities", discovered.spa, safeControl);
+    const siteLights = discovered.siteLights.filter((id) => this._isDisplayableControl(this._hass.states[id]));
     const allControls = [...new Set([...pool, ...spa])].filter((id) => this._isDisplayableControl(this._hass.states[id]));
     const selected = String(mode.state || "Off").toLowerCase();
     const activeControls = selected === "pool" ? pool : selected === "spa" ? spa : [];
-    const liveLights = allControls.filter((id) => id.startsWith("light.") && !this._unavailable(this._hass.states[id]));
+    const liveLights = siteLights.length
+      ? siteLights
+      : allControls.filter((id) => id.startsWith("light.") && !this._unavailable(this._hass.states[id]));
     const running = activeControls.filter((id) => {
       const state = this._hass.states[id];
       return state && !this._unavailable(state) && state.state === "on";
@@ -510,7 +513,7 @@ class PoolsideDashboard extends HTMLElement {
   }
 
   _discoverEntities(mode) {
-    const result = { pool: [], spa: [], telemetry: [] };
+    const result = { pool: [], spa: [], siteLights: [], telemetry: [] };
     const bodyIds = Object.entries(mode.attributes?.poolside_body_ids || {});
     const bodyId = (label) => bodyIds.find(([option]) => option.toLowerCase() === label)?.[1];
     const poolBodyId = bodyId("pool");
@@ -522,6 +525,10 @@ class PoolsideDashboard extends HTMLElement {
       const scope = state.attributes?.poolside_body_id;
       const poolside = Boolean(scope) || id.includes("poolside") || /^(pool|spa)\b/.test(name);
       if (!poolside) return;
+      if (domain === "light" && state.attributes?.poolside_site_light_group === true) {
+        result.siteLights.push(id);
+        return;
+      }
       if (["switch", "light", "number", "fan", "climate"].includes(domain)) {
         if (scope && scope === poolBodyId) result.pool.push(id);
         else if (scope && scope === spaBodyId) result.spa.push(id);

@@ -4,12 +4,13 @@ from typing import Final
 
 DOMAIN: Final = "poolside"
 NAME: Final = "Poolside"
-VERSION: Final = "0.1.54"
+VERSION: Final = "0.1.55"
 
 API_URL: Final = "https://api.poolside.cloud/api/jsonrpc/v1"
 WS_URL: Final = "wss://gateway.poolside.cloud/websocket"
 
 CONF_ACCESS_TOKEN: Final = "access_token"
+CONF_REFRESH_TOKEN: Final = "refresh_token"
 CONF_TRANSPORT: Final = "transport"
 TRANSPORT_CLOUD: Final = "cloud"
 

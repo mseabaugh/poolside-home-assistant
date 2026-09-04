@@ -5,14 +5,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
-from .exceptions import ProtocolError
+from .exceptions import AuthenticationError, ProtocolError
 from .models import PoolsideData, Site, apply_runtime, discover_sites, find_flow_document
 from .redact import fingerprint
 from .safety import SafetyPolicy
-from .transport import Transport
+from .transport import AuthTokens, Transport
 
 
 class PoolsideClient:
@@ -29,6 +29,13 @@ class PoolsideClient:
         if result is not True:
             raise ProtocolError("Poolside ping did not return true")
         return True
+
+    async def async_refresh_tokens(self) -> AuthTokens:
+        """Rotate the authenticated session when supported by the transport."""
+        refresh = getattr(self._transport, "async_refresh_tokens", None)
+        if refresh is None:
+            raise AuthenticationError("Poolside refresh token is unavailable")
+        return cast("AuthTokens", await refresh())
 
     async def async_get_config(self) -> Any:
         """Fetch the complete account configuration."""

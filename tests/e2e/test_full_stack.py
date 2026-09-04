@@ -16,7 +16,7 @@ from custom_components.poolside.exceptions import (
     CannotConnectError,
     RemoteError,
 )
-from custom_components.poolside.transport import CloudTransport, Endpoints, async_login
+from custom_components.poolside.transport import AuthTokens, CloudTransport, Endpoints, async_login
 from tests.e2e.fake_poolside import (
     SYNTHETIC_PASSWORD,
     SYNTHETIC_TOKEN,
@@ -38,17 +38,26 @@ async def test_real_http_websocket_read_write_and_push(
 
     async with aiohttp.ClientSession() as session:
         endpoints = Endpoints(api_url, ws_url)
-        assert (
-            await async_login(session, SYNTHETIC_USERNAME, SYNTHETIC_PASSWORD, endpoints)
-            == SYNTHETIC_TOKEN
-        )
+        tokens = await async_login(session, SYNTHETIC_USERNAME, SYNTHETIC_PASSWORD, endpoints)
+        assert tokens == AuthTokens(SYNTHETIC_TOKEN, SYNTHETIC_TOKEN)
+        persisted: list[AuthTokens] = []
+
+        async def token_updated(updated: AuthTokens) -> None:
+            persisted.append(updated)
+
         transport = CloudTransport(
             session,
-            SYNTHETIC_TOKEN,
+            tokens.access_token,
             endpoints,
+            refresh_token=tokens.refresh_token,
+            token_updated=token_updated,
             websocket_heartbeat=None,
         )
         client = PoolsideClient(transport)
+        assert await client.async_refresh_tokens() == tokens
+        assert persisted == [tokens]
+        assert service.requests[-1]["method"] == "User.refreshToken"
+        assert service.requests[-1]["params"] == {}
         assert await client.async_validate()
         data = await client.async_load()
         site = data.sites["site-alpha"]

@@ -15,10 +15,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 from .client import PoolsideClient
-from .const import DOMAIN, PLATFORMS, VERSION
+from .const import CONF_REFRESH_TOKEN, DOMAIN, PLATFORMS, VERSION
 from .coordinator import PoolsideCoordinator
 from .factory import create_client
 from .redact import fingerprint
+from .transport import AuthTokens
 
 SERVICE_CONFIRM_FLOW_SWITCH = "confirm_flow_switch"
 ATTR_GROUP_ID = "group_id"
@@ -88,7 +89,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PoolsideConfigEntry) -> 
     # Re-register after config-entry startup so an already-running frontend also
     # receives the local card resource.
     await _async_register_frontend_assets(hass)
-    client = create_client(hass, entry.data[CONF_ACCESS_TOKEN])
+
+    async def _tokens_updated(tokens: AuthTokens) -> None:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_ACCESS_TOKEN: tokens.access_token,
+                CONF_REFRESH_TOKEN: tokens.refresh_token,
+            },
+        )
+
+    client = create_client(
+        hass,
+        entry.data[CONF_ACCESS_TOKEN],
+        entry.data.get(CONF_REFRESH_TOKEN),
+        _tokens_updated,
+    )
     coordinator = PoolsideCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = PoolsideRuntimeData(client, coordinator)

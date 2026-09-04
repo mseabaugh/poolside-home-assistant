@@ -117,6 +117,8 @@ def test_dashboard_provides_a_safe_all_lights_group_control() -> None:
     assert "all-lights-preset" in dashboard
     assert 'id.startsWith("light.") && this._hass.states[id]' in dashboard
     assert 'callService("light", allOn ? "turn_off" : "turn_on"' in dashboard
+    assert "state.attributes?.poolside_site_light_group === true" in dashboard
+    assert "siteLights.length" in dashboard
 
 
 def test_dashboard_bundles_and_uses_flat_poolside_icons() -> None:

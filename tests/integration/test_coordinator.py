@@ -75,7 +75,7 @@ class HeartbeatClient(LoadClient):
         self.heartbeat_error = heartbeat_error
         self.heartbeat_calls = 0
 
-    async def async_ping(self) -> bool:
+    async def async_refresh_tokens(self) -> bool:
         self.heartbeat_calls += 1
         if self.heartbeat_error is not None:
             raise self.heartbeat_error
@@ -638,11 +638,11 @@ async def test_heartbeat_success_and_retryable_failure(
     client = HeartbeatClient()
     coordinator = PoolsideCoordinator(hass, config_entry, client)  # type: ignore[arg-type]
 
-    async def stop_after_ping() -> bool:
+    async def stop_after_refresh() -> bool:
         coordinator._stopping.set()
         return True
 
-    client.async_ping = stop_after_ping  # type: ignore[method-assign]
+    client.async_refresh_tokens = stop_after_refresh  # type: ignore[method-assign]
     await coordinator._async_heartbeat_loop()
     assert client.heartbeat_calls == 0
 

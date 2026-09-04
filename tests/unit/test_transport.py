@@ -19,6 +19,7 @@ from custom_components.poolside.exceptions import (
     RemoteError,
 )
 from custom_components.poolside.transport import (
+    AuthTokens,
     CloudTransport,
     Endpoints,
     _extract_login_token,
@@ -100,6 +101,21 @@ class FakeSession:
         return self.websocket
 
 
+class SequenceSession(FakeSession):
+    """Return scripted responses for retry and refresh tests."""
+
+    def __init__(self, responses: list[FakeResponse | Exception]) -> None:
+        super().__init__()
+        self.responses = responses
+
+    def post(self, url: str, **kwargs: Any) -> FakeResponse:
+        self.post_calls.append({"url": url, **kwargs})
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
 def _transport(session: FakeSession) -> CloudTransport:
     """Construct with deliberately synthetic endpoints."""
     return CloudTransport(
@@ -114,7 +130,7 @@ async def _login(
     username: str = "synthetic-user",
     password: str | None = None,
     endpoints: Endpoints | None = None,
-) -> str:
+) -> AuthTokens:
     """Call the production login seam with the injected fake session."""
     password = "synthetic-password" if password is None else password
     return await async_login(session, username, password, endpoints)  # type: ignore[arg-type]
@@ -158,15 +174,18 @@ def test_transport_rejects_empty_token() -> None:
 @pytest.mark.parametrize(
     ("result", "expected"),
     [
-        ("  returned-token  ", "returned-token"),
-        ({"accessToken": "camel-token"}, "camel-token"),
-        ({"access_token": "snake-token"}, "snake-token"),
-        ({"token": "plain-token"}, "plain-token"),
-        ({"Token": "title-token"}, "title-token"),
+        (
+            {"accessToken": "camel-token", "refreshToken": "refresh-token"},
+            AuthTokens("camel-token", "refresh-token"),
+        ),
+        (
+            {"access_token": "snake-token", "refresh_token": "refresh-token"},
+            AuthTokens("snake-token", "refresh-token"),
+        ),
     ],
 )
 async def test_login_exchanges_credentials_without_bearer_header(
-    result: Any, expected: str, caplog: pytest.LogCaptureFixture
+    result: Any, expected: AuthTokens, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Credential login calls User.login and keeps secrets out of observability."""
     session = FakeSession(FakeResponse(200, {"result": result}))
@@ -205,6 +224,88 @@ async def test_login_exchanges_credentials_without_bearer_header(
 def test_login_token_extraction_is_conservative(result: Any, expected: str | None) -> None:
     """Only non-empty supported token fields are accepted."""
     assert _extract_login_token(result) == expected
+
+
+async def test_refresh_uses_refresh_bearer_rotates_and_persists_tokens() -> None:
+    """The captured empty-params refresh operation atomically rotates both tokens."""
+    session = FakeSession(
+        FakeResponse(
+            200,
+            {"result": {"accessToken": "next-access", "refreshToken": "next-refresh"}},
+        )
+    )
+    persisted: list[AuthTokens] = []
+
+    async def token_updated(tokens: AuthTokens) -> None:
+        persisted.append(tokens)
+
+    synthetic_refresh = "old-refresh"
+    transport = CloudTransport(
+        session,  # type: ignore[arg-type]
+        "old-access",
+        Endpoints("https://refresh.invalid", "wss://unused"),
+        refresh_token=synthetic_refresh,
+        token_updated=token_updated,
+    )
+    tokens = await transport.async_refresh_tokens()
+    assert tokens == AuthTokens("next-access", "next-refresh")
+    assert persisted == [tokens]
+    call = session.post_calls[0]
+    assert call["headers"]["Authorization"] == "Bearer old-refresh"
+    assert call["json"]["method"] == "User.refreshToken"
+    assert call["json"]["params"] == {}
+    assert transport._headers["Authorization"] == "Bearer next-access"
+
+
+async def test_rejected_access_token_refreshes_once_and_retries() -> None:
+    """A 401 rotates credentials and retries the original RPC exactly once."""
+    session = SequenceSession(
+        [
+            FakeResponse(401, {}),
+            FakeResponse(
+                200,
+                {"result": {"accessToken": "next-access", "refreshToken": "next-refresh"}},
+            ),
+            FakeResponse(200, {"result": True}),
+        ]
+    )
+    transport = CloudTransport(
+        session,  # type: ignore[arg-type]
+        "old-access",
+        Endpoints("https://refresh.invalid", "wss://unused"),
+        refresh_token="synthetic-refresh",  # noqa: S106
+    )
+    assert await transport.async_rpc("ping") is True
+    assert [call["json"]["method"] for call in session.post_calls] == [
+        "ping",
+        "User.refreshToken",
+        "ping",
+    ]
+
+
+async def test_refresh_requires_token_and_rejects_bad_responses() -> None:
+    """Missing, rejected, failed, and malformed refreshes fail closed."""
+    transport = CloudTransport(FakeSession(), "access")  # type: ignore[arg-type]
+    with pytest.raises(AuthenticationError, match="unavailable"):
+        await transport.async_refresh_tokens()
+
+    cases = [
+        (FakeResponse(401, {}), AuthenticationError),
+        (FakeResponse(500, {}), CannotConnectError),
+        (FakeResponse(200, {"error": {"code": 403}}), AuthenticationError),
+        (FakeResponse(200, {"result": {"accessToken": "only"}}), ProtocolError),
+        (FakeResponse(200, {"result": 123}), ProtocolError),
+        (aiohttp.ClientError("offline"), CannotConnectError),
+        (FakeResponse(200, json.JSONDecodeError("bad", "x", 0)), CannotConnectError),
+    ]
+    for response, expected in cases:
+        failing = CloudTransport(
+            FakeSession(response),  # type: ignore[arg-type]
+            "access",
+            refresh_token="synthetic-refresh",  # noqa: S106
+        )
+        with pytest.raises(expected):
+            await failing.async_refresh_tokens()
 
 
 @pytest.mark.parametrize("credentials", [("", "password"), ("username", "")])

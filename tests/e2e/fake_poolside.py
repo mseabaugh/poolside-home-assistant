@@ -109,6 +109,17 @@ class FakePoolsideService:
         result: Any
         if method == "User.login":
             return self._login_response(payload, params)
+        if method == "User.refreshToken":
+            return web.json_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": payload.get("id"),
+                    "result": {
+                        "accessToken": SYNTHETIC_TOKEN,
+                        "refreshToken": SYNTHETIC_TOKEN,
+                    },
+                }
+            )
         if not self._authorized(request):
             return web.json_response({"error": "unauthorized"}, status=401)
         if method == "ping":
@@ -197,7 +208,10 @@ class FakePoolsideService:
             {
                 "id": payload.get("id"),
                 "jsonrpc": "2.0",
-                "result": {"accessToken": SYNTHETIC_TOKEN},
+                "result": {
+                    "accessToken": SYNTHETIC_TOKEN,
+                    "refreshToken": SYNTHETIC_TOKEN,
+                },
                 "traceId": payload.get("traceId"),
             }
         )

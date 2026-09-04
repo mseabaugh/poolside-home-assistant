@@ -11,10 +11,11 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import selector
 
-from .const import DOMAIN, NAME, TRANSPORT_CLOUD
+from .const import CONF_REFRESH_TOKEN, DOMAIN, NAME, TRANSPORT_CLOUD
 from .exceptions import AuthenticationError, CannotConnectError, PoolsideError
 from .factory import async_login as async_login_credentials
 from .factory import create_client
+from .transport import AuthTokens
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ async def async_validate_token(flow: PoolsideConfigFlow, token: str) -> str:
     return await create_client(flow.hass, token).async_validate()
 
 
-async def async_login(flow: PoolsideConfigFlow, username: str, password: str) -> str:
+async def async_login(flow: PoolsideConfigFlow, username: str, password: str) -> AuthTokens:
     """Exchange credentials through the production Poolside login endpoint."""
     return await async_login_credentials(flow.hass, username, password)
 
@@ -50,8 +51,8 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             username = str(user_input[CONF_USERNAME]).strip()
             password = str(user_input[CONF_PASSWORD])
             try:
-                token = await async_login(self, username, password)
-                account_id = await async_validate_token(self, token)
+                tokens = await async_login(self, username, password)
+                account_id = await async_validate_token(self, tokens.access_token)
             except AuthenticationError:
                 _LOGGER.warning("Poolside configuration authentication failed")
                 errors["base"] = "invalid_auth"
@@ -69,7 +70,11 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=NAME,
-                    data={CONF_ACCESS_TOKEN: token, "transport": TRANSPORT_CLOUD},
+                    data={
+                        CONF_ACCESS_TOKEN: tokens.access_token,
+                        CONF_REFRESH_TOKEN: tokens.refresh_token,
+                        "transport": TRANSPORT_CLOUD,
+                    },
                 )
         return self.async_show_form(step_id="user", data_schema=_CREDENTIALS_SCHEMA, errors=errors)
 
@@ -86,8 +91,8 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             username = str(user_input[CONF_USERNAME]).strip()
             password = str(user_input[CONF_PASSWORD])
             try:
-                token = await async_login(self, username, password)
-                await async_validate_token(self, token)
+                tokens = await async_login(self, username, password)
+                await async_validate_token(self, tokens.access_token)
             except AuthenticationError:
                 _LOGGER.warning("Poolside reauthentication authentication failed")
                 errors["base"] = "invalid_auth"
@@ -103,7 +108,10 @@ class PoolsideConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(
                     self._get_reauth_entry(),
-                    data_updates={CONF_ACCESS_TOKEN: token},
+                    data_updates={
+                        CONF_ACCESS_TOKEN: tokens.access_token,
+                        CONF_REFRESH_TOKEN: tokens.refresh_token,
+                    },
                 )
         return self.async_show_form(
             step_id="reauth_confirm",

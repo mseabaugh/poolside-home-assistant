@@ -172,8 +172,8 @@ class PoolsideCoordinator(DataUpdateCoordinator[PoolsideData]):
         """Keep a sliding Poolside session active without persisting credentials."""
         while not self._stopping.is_set():
             try:
-                await self.client.async_ping()
-                _LOGGER.debug("poolside_heartbeat outcome=success")
+                await self.client.async_refresh_tokens()
+                _LOGGER.debug("poolside_token_refresh outcome=success")
             except AuthenticationError:
                 self._poolside_entry.async_start_reauth(self.hass)
                 return

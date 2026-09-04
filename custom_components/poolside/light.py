@@ -153,6 +153,7 @@ class PoolsideAllLights(PoolsideEntity, LightEntity):
         brightness = self.brightness
         return {
             **super().extra_state_attributes,
+            "poolside_site_light_group": True,
             "light_count": len(self._controls),
             "lights_on": sum(
                 str(control.desired.get("Status", "OFF")).upper() == "ON"

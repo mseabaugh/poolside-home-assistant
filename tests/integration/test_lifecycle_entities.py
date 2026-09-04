@@ -10,9 +10,10 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.poolside import async_unload_entry
-from custom_components.poolside.const import DOMAIN
+from custom_components.poolside.const import CONF_ACCESS_TOKEN, CONF_REFRESH_TOKEN, DOMAIN
 from custom_components.poolside.diagnostics import async_get_config_entry_diagnostics
 from custom_components.poolside.redact import REDACTED
+from custom_components.poolside.transport import AuthTokens
 from tests.fakes import FakeTransport
 
 pytestmark = pytest.mark.integration
@@ -28,6 +29,27 @@ async def _setup(
     monkeypatch.setattr("custom_components.poolside.create_client", lambda *_args: fake_client)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+
+
+async def test_rotated_tokens_are_persisted_atomically(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The transport callback saves both members of a rotated token pair."""
+    callbacks: list[Any] = []
+
+    def create_client(*args: Any) -> Any:
+        callbacks.append(args[3])
+        return fake_client
+
+    monkeypatch.setattr("custom_components.poolside.create_client", create_client)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await callbacks[0](AuthTokens("rotated-access", "rotated-refresh"))
+    assert config_entry.data[CONF_ACCESS_TOKEN] == "rotated-access"
+    assert config_entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
 
 
 def _entity_id(hass: HomeAssistant, platform: str, unique_id: str) -> str:
